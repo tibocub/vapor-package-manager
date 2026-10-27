@@ -124,7 +124,7 @@ if cmd == "emit" then
     end
   end
   write(out .. "/index/v1/meta.json", json.encode({
-    format = 1, lua = "5.4", packages = n, built = os.date("!%Y-%m-%d"),
+    format = 1, lua = "5.4", packages = n, built = os.date("!%Y-%m-%d"), serial = os.time(),
     provided = filter.provided, stub = filter.stub }) .. "\n")
   local rl = {}
   for k, c in pairs(reasons) do rl[#rl + 1] = { k, c } end

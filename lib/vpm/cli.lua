@@ -106,7 +106,13 @@ local function context(parsed, env)
       if not decode then error("no JSON decoder available") end
       transport.cafile = cfg.cafile               -- trusted roots for https (the module only loads vpm.http when it needs it)
       built.transport = transport
-      built.index = require("vpm.index").new{ base = cfg.index or error("no index configured"), transport = transport, decode = decode }
+      local keys
+      for i, hex in ipairs(cfg.keys or {}) do
+        keys = keys or {}
+        keys[i] = (hex:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end))
+      end
+      built.index = require("vpm.index").new{ base = cfg.index or error("no index configured"), transport = transport, decode = decode,
+        keys = keys, verify = env.verify, serial_file = keys and (cfg.libdir .. "/.vpm/index-serial") }
     end
     return built.index
   end
@@ -133,9 +139,9 @@ local function context(parsed, env)
     if cfg.provided then return cfg.provided end
     if built.provided == nil then
       local index = ctx.index()
-      local body = built.transport.fetch(index.base .. "/meta.json")
-      local ok, meta = pcall(env.decode or require("cjson").decode, body or "{}")
-      built.provided = ok and meta.provided or {}
+      local meta, _, merr = index:meta()
+      if not meta and index.keys then error(merr or "cannot read the index metadata") end
+      built.provided = meta and meta.provided or {}
     end
     return built.provided
   end

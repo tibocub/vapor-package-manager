@@ -82,4 +82,8 @@ shadowing (dependency-resolution.md).
   network"): vsock (TCP) and vtls (TLS) are C primitives in vaporOS, the HTTP client is Lua in vpm. Certificate
   verification cannot be turned off. Verified: `vpm install -g -y penlight inspect middleclass serpent lustache etlua`
   (6 packages, 8 files from raw.githubusercontent.com over TLS, sha256-checked), and the libraries work.
+- Signed index (2026-10-27, user: yes, we host and sign our own index so small boards can use plain http and we can
+  later publish vaporOS-specific programs next to the LuaRocks-derived ones): ed25519, `.sig` per index file, `keys` in
+  the config makes signatures mandatory, serial floor. See [signing.md](signing.md). vaporOS programs will declare
+  the hardware capabilities they need (`requires`); the design waits for the GPIO survey.
 

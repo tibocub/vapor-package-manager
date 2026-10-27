@@ -32,12 +32,16 @@ invisible. Acceptable? Should registration be opt-out?
 Would remove the one-version-per-process rule. Costs RAM and diverges from how Lua works. Currently no.
 
 ## Q7. Signing
-Who holds the index signing key, how is it rotated, what happens when the key is lost. Not needed to start;
-needed before anything public.
+Mechanism done ([signing.md](signing.md)): ed25519 over index files, serial floor against rollback. Still open, and
+needed before anything public: who holds the real key (offline), how devices learn a rotated key, what happens when it
+is lost, an `expires` check once there is a clock, single-package rollback, and the policy for what our signature on a
+vaporOS-published program promises.
 
 ## Q8. Mirrors for upstream files
 If a rock's upstream URL disappears, the index entry breaks. Do we mirror files (then we do host packages) or
-accept breakage and report it?
+accept breakage and report it? Newer angle (2026-10-27): GitHub serves everything (raw files, release assets) only
+over https, so a board on plain http needs a mirror anyway, or the PC bridge. Files named by sha256 on any dumb http
+server are safe with a signed index, so the mirror needs no trust, only a domain and some disk.
 
 ## Q9. Name
 "vpm" is a placeholder. Check for clashes with existing tools before it sticks.

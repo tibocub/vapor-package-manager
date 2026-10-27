@@ -122,7 +122,7 @@ whose raw-URL pattern is not mapped yet: framagit, codeberg, sr.ht, plus GitHub 
 either more URL rules (about 40 packages) or a mirror (question Q8).
 
 `undeclared_requires` is set on 744 packages. Most are host modules (kong, resty, telescope: already tagged).
-The rest are real: `bit` (88 rocks; Lua 5.4 has no `bit` library, it is `bit32`-less) and `socket` (41, plus
+The rest are real: `bit` (88 rocks; Lua 5.4 has no `bit` library: it has native bitwise operators instead) and `socket` (41, plus
 `socket.url` 24: rocks that need luasocket without saying so), `inspect`, `logger`.
 
 Known gaps: only the latest version of each rock is indexed; the record keeps no per-file source path, so raw

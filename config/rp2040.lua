@@ -1,5 +1,5 @@
 -- /flash/etc/vpm.lua on the RP2040-Zero. bindir is a directory already on the shell's default PATH
--- (/flash/sb:/bin), so installed programs run by name without touching vaporOS.
+-- (/flash/sb:/bin) once PATH is set (it is unset by default, see docs/vaporos-prerequisites.md P2).
 return {
   libdir  = "/flash/lib/lua",
   appdir  = "/flash/apps",

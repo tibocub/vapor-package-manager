@@ -117,3 +117,19 @@ maintenance and read-only commands never load the resolver, index client, transp
 
 Not yet done from the list above: the slim-index split (proposal 2) and the hash-loop allocations (4).
 
+
+## System heap during a run (RP2040, 2026-10-27, from `/proc/meminfo`)
+
+Measured on the real board with the deployed bytecode build (46,922 bytes of modules, launcher `/flash/sb/vpm`),
+after a `reboot` so that `maxused` (high-water mark since boot) covers only the run. Total heap 241,984 bytes.
+
+| moment | used | maxused | free | maxfree (largest block) |
+|---|---|---|---|---|
+| after boot, shell only | 58,944 | 59,312 | 183,040 | 183,024 |
+| after `vpm install -g -y g` (7 packages, 11 files, ~17 s) | 60,592 | 180,672 | 181,392 | 137,440 |
+
+Peak during the install: **121,360 bytes above idle; minimum free heap 61,312 bytes** (about 25% of the heap). That
+is the whole process (Lua state, loaded modules, resolver tables, file buffers, GC slack), more than the 74 KB
+that `collectgarbage("count")` reported earlier, so the earlier figures understate the real need by about 47 KB.
+Only the install was measured; check, list, remove and a bigger closure still have to be done (one reboot each).
+Upload note: `rp2040-send.py` loses data on long transfers; `rp2040-put.py` (md5-checked, now resends bad files) works.

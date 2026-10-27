@@ -73,3 +73,25 @@ every record twice. The honest consequences:
 3. Even at default GC the peak (111 KB, of which 53 KB is code) is above the 100 KB hard budget: load modules per
    command (`remove`/`list` need no resolver or network code) and make the hash loop produce less garbage.
 
+### After the journal change (same test, same day)
+
+Fresh installs are written straight to their final place and undone by the journal (the lock file lists the
+files this run creates) if anything fails; upgrades still go through staging; new records are written directly.
+
+| GC mode | resolve | install | rehash check | remove | peak Lua heap |
+|---|---|---|---|---|---|
+| default (vlua: pause 100, 400) | 1.56 s | **13.2 s** (was 28.6, first version 34.4) | 4.3 s | 5.9 s | 115 KB |
+| generational | 0.60 s | 10.8 s | 3.3 s | 4.9 s | 137 KB |
+| relaxed incremental (200, 100) | 0.61 s | n/a (before the journal: 25.4 s vs 28.6) | 3.2 s | 5.0 s | 152 KB |
+
+Heap composition at the peak: 27 KB baseline (Lua state with lfs/lpeg/cjson) + 53-56 KB of vpm bytecode + 15-35 KB
+working set. **The 100 KB "hard" budget was a guess made before any measurement; what actually matters is the
+minimum free system heap during a run (187 KB free after boot), which has not been measured yet** (only Lua's own
+`collectgarbage("count")` has).
+
+Proposals to get the peak down (not done yet): (1) split the index so the resolver gets a slim deps/size file and
+file lists are fetched one package at a time at install; (2) load code per phase and per command, unloading the
+resolver before downloading and not loading resolver/index/transport for `remove`/`list`/`check`; (3) move
+remove/check/repair out of `installer.lua`; (4) make the hash loop allocate less (reuse the schedule table, no
+string concatenation per chunk). A non-default GC mode is not a fix: it buys speed with 20-40 KB of peak.
+

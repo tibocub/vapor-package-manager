@@ -67,9 +67,23 @@ end
 -- plan: from the resolver. requested: name -> constraint text the user typed (these join the world set)
 function I:apply(plan, requested)
   requested = requested or {}
-  local scopes, jobs, own_cache, made = {}, {}, {}, {}
+  local scopes, jobs, own_cache, made, locked, created = {}, {}, {}, {}, {}, {}
+  local function undo_created()
+    for i = #created, 1, -1 do
+      local c = created[i]
+      if not c.job.done then          -- completed packages keep their files: they have a record
+        fs.remove(c.path)
+        fs.prune(c.path:match("^(.*)/[^/]*$"), c.stop)
+      end
+    end
+    created = {}
+  end
   local function fail(code, msg)
-    for _, st in pairs(scopes) do st:clear_staging(); st:unlock() end
+    undo_created()
+    for scope, st in pairs(scopes) do
+      st:clear_staging()
+      if locked[scope] then st:unlock() end
+    end
     return nil, msg, code
   end
 
@@ -77,8 +91,6 @@ function I:apply(plan, requested)
     if a.scope ~= "firmware" and not scopes[a.scope] then
       local st, err = self:state(a.scope)
       if not st then return nil, err, 1 end
-      local ok, lerr = st:lock()
-      if not ok then return nil, lerr, 1 end
       scopes[a.scope] = st
     end
   end
@@ -96,24 +108,29 @@ function I:apply(plan, requested)
       local base = base_dir(self, st, kind, a.name)
       own_cache[a.scope] = own_cache[a.scope] or owners(st)
       local own = kind == "lib" and own_cache[a.scope] or {}
-      local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta }
+      local old = st:get(a.name)
+      local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old }
+      local any_existing = false
       for dest, f in pairs(meta.files or {}) do
         if not safe_rel(dest) then return fail(1, ("%s: unsafe file path '%s' in index"):format(a.name, dest)) end
         local target = base .. "/" .. dest
-        if fs.exists(target) and own[dest] ~= a.name then
-          local old = kind == "app" and st:get(a.name)
-          if not old then
+        local existed = fs.exists(target)
+        if existed then
+          any_existing = true
+          if not old and own[dest] ~= a.name then
             return fail(1, ("%s: %s exists and is %s (not overwritten)"):format(a.name, target,
               own[dest] and ("owned by " .. own[dest]) or "not managed by vpm"))
           end
         end
-        job.files[#job.files + 1] = { dest = dest, url = f.url, sha256 = f.sha256, size = f.size,
-                                      existed = fs.exists(target) }
+        job.files[#job.files + 1] = { dest = dest, url = f.url, sha256 = f.sha256, size = f.size, existed = existed }
         total = total + (f.size or 0)
       end
       for cmd, entry in pairs(type(meta.bin) == "table" and meta.bin or {}) do
         if not safe_name(cmd) or not safe_rel(entry) then return fail(1, a.name .. ": unsafe bin entry in index") end
       end
+      -- A fresh install is written straight to its final place and undone by the journal if anything fails;
+      -- an upgrade goes through staging so the working version survives a failed download.
+      job.direct = not old and not any_existing
       table.sort(job.files, function(x, y) return x.dest < y.dest end)
       jobs[#jobs + 1] = job
     end
@@ -125,17 +142,36 @@ function I:apply(plan, requested)
     end
   end
 
-  -- 2. download and verify everything into staging; nothing is in place yet
+  -- 1b. lock each scope; the lock file carries the journal of files created in place
+  local journal = {}
+  for _, j in ipairs(jobs) do
+    if j.direct then
+      local lines = journal[j.a.scope] or {}
+      for _, f in ipairs(j.files) do lines[#lines + 1] = j.a.name .. "\t" .. j.base .. "/" .. f.dest end
+      for cmd in pairs(type(j.meta.bin) == "table" and j.meta.bin or {}) do
+        lines[#lines + 1] = j.a.name .. "\t" .. self.cfg.bindir .. "/" .. cmd
+      end
+      journal[j.a.scope] = lines
+    end
+  end
+  for scope, st in pairs(scopes) do
+    local ok, lerr = st:lock(journal[scope] and (table.concat(journal[scope], "\n") .. "\n") or nil)
+    if not ok then return fail(1, lerr) end
+    locked[scope] = true
+  end
+
+  -- 2. download and verify; staged jobs into staging, direct jobs straight to their place
   for _, j in ipairs(jobs) do
     for _, f in ipairs(j.files) do
       if not f.url then return fail(4, ("%s: no download URL for %s"):format(j.a.name, f.dest)) end
-      local path = j.st:staging(j.a.name) .. "/" .. f.dest
+      local path = (j.direct and j.base or j.st:staging(j.a.name)) .. "/" .. f.dest
       local dir = path:match("^(.*)/[^/]*$")
       if not made[dir] then
         local ok, merr = fs.mkdirp(dir)
         if not ok then return fail(1, merr) end
         made[dir] = true
       end
+      if j.direct then created[#created + 1] = { path = path, job = j, stop = j.kind == "app" and self.cfg.appdir or j.st.root } end
       local out, oerr = io.open(path, "wb")
       if not out then return fail(1, oerr) end
       local h, n = hashmod.new(), 0
@@ -147,24 +183,25 @@ function I:apply(plan, requested)
     end
   end
 
-  -- 3. commit: replace old versions, move files, write the record last
+  -- 3. commit: replace old versions, move staged files, write the record last
   local when = os.date("%Y-%m-%d", self.now())
   local versions = {}
   for _, a in ipairs(plan.actions) do versions[a.name] = a.version end
   for _, j in ipairs(jobs) do
-    local st, a = j.st, j.a
-    local old = st:get(a.name)
+    local st, a, old = j.st, j.a, j.old
     if old then remove_files(self, st, old); made = {} end
-    for _, f in ipairs(j.files) do
-      local target = j.base .. "/" .. f.dest
-      local tdir = target:match("^(.*)/[^/]*$")
-      local ok, err = true, nil
-      if not made[tdir] then ok, err = fs.mkdirp(tdir); made[tdir] = ok end
-      if ok then
-        if f.existed and fs.exists(target) then fs.remove(target) end
-        ok, err = fs.rename(st:staging(a.name) .. "/" .. f.dest, target)
+    if not j.direct then
+      for _, f in ipairs(j.files) do
+        local target = j.base .. "/" .. f.dest
+        local tdir = target:match("^(.*)/[^/]*$")
+        local ok, err = true, nil
+        if not made[tdir] then ok, err = fs.mkdirp(tdir); made[tdir] = ok end
+        if ok then
+          if f.existed and fs.exists(target) then fs.remove(target) end
+          ok, err = fs.rename(st:staging(a.name) .. "/" .. f.dest, target)
+        end
+        if not ok then return fail(1, ("cannot place %s: %s (run 'vpm check')"):format(target, tostring(err))) end
       end
-      if not ok then return fail(1, ("cannot place %s: %s (run 'vpm check')"):format(target, tostring(err))) end
     end
     local rec = { name = a.name, version = a.version, kind = j.kind, base = j.kind, scope = a.scope,
                   reason = requested[a.name] and "world" or ((old and old.reason) or "dep"),
@@ -184,8 +221,9 @@ function I:apply(plan, requested)
         rec.launchers[cmd] = p
       end
     end
-    local ok, err = st:put(rec)
+    local ok, err = st:put(rec, not old)
     if not ok then return fail(1, "cannot write record: " .. tostring(err)) end
+    j.done = true     -- this package is complete: the journal no longer applies to it
   end
 
   -- 4. world set; reused packages the user named are promoted from dependency to world
@@ -203,6 +241,23 @@ function I:apply(plan, requested)
     st:unlock()
   end
   return true
+end
+
+-- Undo a crashed run: files listed in the journal that no complete record owns are removed.
+function I:repair(scope)
+  local st, err = self:state(scope)
+  if not st then return nil, err end
+  local removed = 0
+  for _, e in ipairs(st:journal()) do
+    if not st:get(e.name) and fs.exists(e.path) then
+      fs.remove(e.path); removed = removed + 1
+      local stop = e.path:find(self.cfg.appdir, 1, true) == 1 and self.cfg.appdir or st.root
+      fs.prune(e.path:match("^(.*)/[^/]*$"), stop)
+    end
+  end
+  st:clear_staging()
+  st:unlock()
+  return removed
 end
 
 -- Remove packages from a scope. Refuses while another record needs one, unless force.

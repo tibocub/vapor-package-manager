@@ -60,4 +60,8 @@ shadowing (dependency-resolution.md).
 - State layer (`state.lua`, `fs.lua`), `file://` transport, index client and installer written and tested
   (`tests/test_install.lua`: stage/verify/rename, unmanaged files, path escapes from a hostile index, locks,
   hash failures, programs with launchers, local scope). First on-board measurements in ram-budget.md.
+- Journal approach adopted (user, 2026-10-27): fresh installs are written in place with the lock file as journal,
+  upgrades keep staging, new records are written directly; `installer:repair` undoes a crashed run. Install of the
+  7-package test went from 28.6 s to 13.2 s on the RP2040. Cost: after a crash, a fresh package's partial files
+  exist until `repair` runs (vpm refuses to start another run until then).
 

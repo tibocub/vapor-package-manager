@@ -35,6 +35,7 @@ publish{
   notes = { kind = "app", versions = { ["0.3-1"] = { files = { ["notes.lua"] = "print('notes')", ["lib/util.lua"] = "return {}" },
                                                        deps = { "mathx" }, bin = { notes = "notes.lua" } } } },
   broken = { versions = { ["1.0-1"] = { files = { ["broken.lua"] = "x" }, badhash = true } } },
+  bundle = { versions = { ["1.0-1"] = { files = { ["bundle.lua"] = "b" }, deps = { "ansicolors", "broken" } } } },
   evil = { versions = { ["1.0-1"] = { files = { ["ok.lua"] = "x" } } } },
 }
 -- an index entry that tries to escape its directory
@@ -127,7 +128,35 @@ assert(not ok and err:find("another vpm run"))
 assert(inst:check("global")[1]:find("stale lock"))
 fs.remove(g.dir .. "/lock")
 
--- 11. record serialisation round-trips
+-- 11. fresh installs are written in place: no staging renames for packages, only the world file
+fs.remove(cfg.local_root .. "/ansicolors.lua"); inst:remove({ "ansicolors" }, "local")
+local renames, real_rename = 0, fs.rename
+fs.rename = function(a, b) renames = renames + 1; return real_rename(a, b) end
+assert(install({ { name = "ansicolors" } }))
+assert(renames == 1, "renames: " .. renames)               -- only world.lua
+-- 11b. an upgrade still goes through staging, so a failed download keeps the working version
+publish{ mathx = { versions = { ["3.0-1"] = { files = { ["mathx/init.lua"] = "return 30" }, deps = { "lpeglike >= 1.0" }, badhash = true } } } }
+idx.cache = {}
+renames = 0
+ok, err, code = install({ { name = "mathx", constraint = "== 3.0-1" } })
+assert(not ok and code == 4 and fs.read(cfg.libdir .. "/mathx/init.lua") == "return 20" and g:get("mathx").version == "2.0-1")
+fs.rename = real_rename
+-- 11c. one bad package in a plan removes the files the others already wrote in place
+fs.remove(cfg.libdir .. "/ansicolors.lua"); g:delete("ansicolors")
+ok, err, code = install({ { name = "bundle" } })
+assert(not ok and code == 4 and err:find("sha256"))
+assert(not exists(cfg.libdir .. "/ansicolors.lua") and not exists(cfg.libdir .. "/bundle.lua") and not g:get("ansicolors"))
+assert(not exists(g.dir .. "/lock") and not exists(g.dir .. "/staging"))
+
+-- 11d. a crash: the lock (journal) lists files; repair removes those without a complete record
+fs.write(cfg.libdir .. "/half.lua", "partial"); fs.mkdirp(cfg.libdir .. "/hd"); fs.write(cfg.libdir .. "/hd/x.lua", "partial")
+fs.write(g.dir .. "/lock", "half\t" .. cfg.libdir .. "/half.lua\nhalf\t" .. cfg.libdir .. "/hd/x.lua\nmathx\t" .. cfg.libdir .. "/mathx/init.lua\n")
+assert(inst:check("global")[1]:find("stale lock"))
+assert(inst:repair("global") == 2)
+assert(not exists(cfg.libdir .. "/half.lua") and not exists(cfg.libdir .. "/hd") and not exists(g.dir .. "/lock"))
+assert(fs.read(cfg.libdir .. "/mathx/init.lua") == "return 20")       -- a complete package is never touched
+
+-- 12. record serialisation round-trips
 local State = require("vpm.state")
 local t = { name = "x", files = { ["a b.lua"] = "h", ["c/d.lua"] = "i" }, n = 3, flag = true, s = 'q"\n' }
 local back = load(State.serialise(t), "=t", "t", {})()

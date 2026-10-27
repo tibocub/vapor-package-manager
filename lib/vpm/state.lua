@@ -70,7 +70,13 @@ function S:installed_view()
   return v
 end
 
-function S:put(rec) return write_atomic(("%s/pkg/%s.lua"):format(self.dir, rec.name), M.serialise(rec)) end
+-- fresh = no record exists yet: write it directly (one flash operation instead of three); a torn new record
+-- reads as corrupt, which vpm treats as "not installed" and `repair` cleans up.
+function S:put(rec, fresh)
+  local path = ("%s/pkg/%s.lua"):format(self.dir, rec.name)
+  if fresh then return fs.write(path, M.serialise(rec)) end
+  return write_atomic(path, M.serialise(rec))
+end
 function S:delete(name) return fs.remove(("%s/pkg/%s.lua"):format(self.dir, name)) end
 
 function S:world() return load_table(self.dir .. "/world.lua") or {} end
@@ -79,10 +85,20 @@ function S:set_world(w) return write_atomic(self.dir .. "/world.lua", M.serialis
 function S:staging(name) return self.dir .. "/staging/" .. (name or "") end
 function S:clear_staging() fs.rmtree(self.dir .. "/staging") end
 
-function S:lock()
+-- The lock file doubles as the journal: its content is "name<TAB>path" lines for every file this run creates in
+-- place (not through staging), so a crashed run can be undone (installer :repair).
+function S:lock(journal)
   local p = self.dir .. "/lock"
   if fs.exists(p) then return nil, "another vpm run is active or crashed (see 'vpm check'): " .. p end
-  return fs.write(p, tostring(os.time()))
+  return fs.write(p, journal or tostring(os.time()))
+end
+function S:journal()
+  local t = {}
+  for line in (fs.read(self.dir .. "/lock") or ""):gmatch("[^\n]+") do
+    local name, path = line:match("^([^\t]+)\t(.+)$")
+    if name then t[#t + 1] = { name = name, path = path } end
+  end
+  return t
 end
 function S:unlock() fs.remove(self.dir .. "/lock") end
 

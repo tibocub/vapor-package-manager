@@ -65,5 +65,5 @@ HTTP(S) client. Memory is the limit: delta resolution and large packs do not fit
 - **R2** Which NuttX simulator networking mode reaches the host network (TAP vs usrsock) and what it needs.
 - **R3** (answered 2026-10-27, see pure-lua-filter.md): 1,663 of 4,929 rocks (33.7%) pass, upper bound. Still
   open: size of typical dependency closures and the effect of rules 8-9.
-- **R4** Does `string.dump(f, true)` plus loading it on the board work with our 64-bit build, and how much RAM
+- **R4** (answered 2026-10-27: yes, host-built stripped bytecode loads on the board; 53 KB heap for 8 modules vs 84 KB from source) Does `string.dump(f, true)` plus loading it on the board work with our 64-bit build, and how much RAM
   does it save compared with compiling source on the device?

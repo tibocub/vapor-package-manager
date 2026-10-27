@@ -75,13 +75,17 @@ notes@">=1.0,<2"   a full constraint (starts with an operator); quote it for the
 
 ## Commands
 
+**Naming rule (user decision 2026-10-27):** every command has a long, explicit canonical name; short forms are
+plain aliases of it, only where they are intuitive (`i`, `rm`, `ls`, `u`); the others (`why`, `info`, `check`,
+`world`, `search`, `outdated`, `clean`, `adopt`, `init`) have none. Help, docs and error messages use the long name.
+
 Global options: `-g` global scope, `-n/--dry-run`, `-y/--yes` (no prompt), `--deps=auto|global|local`
 (default `auto`), `--index URL`, `--root DIR` (scope root, for tests), `-q`, `-v`.
 Exit codes: **0** success, **1** error, **2** usage, **3** unresolvable (conflict; message names the chain),
 **4** network or integrity failure (nothing was changed).
 
 Prompting (user decision 2026-10-27): a plan that only installs **the packages the user named** is applied without
-asking (`vpm i -g ansicolors` with no dependencies). Anything else asks, apt/dnf style, unless `-y`: extra
+asking (`vpm install -g ansicolors` with no dependencies). Anything else asks, apt/dnf style, unless `-y`: extra
 dependencies to fetch, removals, replacements, shadowing, or the global scope touched from a local command. The
 prompt lists everything and the total download and installed size:
 ```
@@ -95,12 +99,12 @@ Without a terminal and without `-y` it refuses.
 | command | does | scope default |
 |---|---|---|
 | `vpm init` | create a `vpm.lua` in the current directory (asks name, kind, entry file; `-y` takes defaults); no network | local |
-| `vpm i [spec...]` | install the specs; no spec = what `./vpm.lua` asks for (updates `vpm-lock.lua`) | local |
-| `vpm i -g spec...` | install system-wide: a library, or a program with launchers | global |
-| `vpm rm spec...` | remove the named packages; refuses if another record needs one (`--force` overrides, plan lists the breakage) | as `i` |
-| `vpm ls [-g]` | list installed packages: name, version, kind, `world`/`dep`, scope; unmanaged files at the end | local |
+| `vpm install [spec...]` (alias `i`) | install the specs; no spec = what `./vpm.lua` asks for (updates `vpm-lock.lua`) | local |
+| `vpm install -g spec...` | install system-wide: a library, or a program with launchers | global |
+| `vpm remove spec...` (alias `rm`) | remove the named packages; refuses if another record needs one (`--force` overrides, plan lists the breakage) | as `install` |
+| `vpm list [-g]` (alias `ls`) | list installed packages: name, version, kind, `world`/`dep`, scope; unmanaged files at the end | local |
 | `vpm why NAME` | everything that uses NAME (records + registered projects), with the constraint each one declares | both |
-| `vpm up [spec]` | update to the highest version the constraints allow; shows impact first | as `i` |
+| `vpm upgrade [spec]` (alias `u`) | update to the highest version the constraints allow; shows impact first | as `install` |
 | `vpm info NAME` | versions, kind, dependencies, size, origin, host-tag, and why a missing package is not installable | – |
 | `vpm check` | verify installed files against recorded sha256; list unmanaged files, orphaned staging dirs, stale locks | both |
 | `vpm world` | the explicit set | both |
@@ -109,9 +113,9 @@ Without a terminal and without `-y` it refuses.
 | `vpm clean` | remove dependency-only packages nothing uses (`full`; on `small` it is `rm` of what `ls` shows as unused) | both |
 | `vpm adopt NAME VER FILE...` | turn unmanaged files into a record (`full`) | global |
 
-**Required on the RP2040 (`small`):** `init`, `i`, `rm`, `ls`, `why`, `up`, `info`, `check`, `world`.
+**Required on the RP2040 (`small`):** `init`, `install`, `remove`, `list`, `why`, `upgrade`, `info`, `check`, `world`.
 
-### `vpm i` in detail
+### `vpm install` in detail
 
 1. Read config and records of the target scope(s). Load the provided-library table from the firmware.
 2. Resolve (dependency-resolution.md). Metadata is fetched per package, one small file at a time.
@@ -134,7 +138,7 @@ A package tagged `host` (Neovim/OpenResty/LÖVE) installs normally; the plan pri
 
 ### Local sources
 
-`vpm i ./dir` and `file://` mirrors install without the network. A directory with a `vpm.lua` that has `name` and
+`vpm install ./dir` and `file://` mirrors install without the network. A directory with a `vpm.lua` that has `name` and
 `version` is installed as that package; its dependencies are resolved from the index like any other. This is how
 a program author tests an install, and how an SD-card mirror works.
 
@@ -149,19 +153,19 @@ return {
 ```
 
 The lock records the resolved version and scope of every package in the closure and is only rewritten by
-`vpm i` / `vpm up`. Plain Lua tables, loaded with an empty environment. Index data is JSON because it is
+`vpm install` / `vpm upgrade`. Plain Lua tables, loaded with an empty environment. Index data is JSON because it is
 remote and is never executed.
 
-### `vpm up`
+### `vpm upgrade`
 
-`vpm up` (no argument) = every package in `world` of the scope. For a global package the plan first lists
+`vpm upgrade` (no argument) = every package in `world` of the scope. For a global package the plan first lists
 **impact**: records and registered projects whose declared constraint the new version breaks (`breaking`), or that
 were resolved against the old version (`untested`). Choices: apply, skip that package, or install the new
 version locally for the project that asked. Global updates never run silently from a local command.
 
 ### Projects (PROPOSED)
 
-The first `vpm i` in a directory registers it in the global `projects.lua` so `why` and `up -g` can see it.
+The first `vpm install` in a directory registers it in the global `projects.lua` so `why` and `upgrade -g` can see it.
 Registration is the default and `--no-register` opts out; unregistered use of global libraries is invisible, and
 `vpm check` says so. Moving a project makes a stale entry; `check` prunes missing paths.
 

@@ -1,0 +1,257 @@
+-- Applies a resolver plan: download into staging, verify, move into place, write records last
+-- (docs/state-and-tracking.md "Safety and crashes"), and the reverse for remove.
+-- Exit-code-like second results: "usage" problems are nil,msg; 3 conflict; 4 network/integrity (nothing changed).
+local fs = require("vpm.fs")
+local State = require("vpm.state")
+local hashmod = require("vpm.hash")
+local M = {}
+local I = {}
+I.__index = I
+
+-- cfg = { libdir, appdir, bindir, local_root, reserve?, free_space? }
+function M.new(o)
+  return setmetatable({ cfg = o.cfg, transport = o.transport, index = o.index,
+                        now = o.now or os.time, states = {} }, I)
+end
+
+function I:state(scope)
+  if not self.states[scope] then
+    local root = scope == "global" and self.cfg.libdir or self.cfg.local_root
+    if not root then return nil, "no " .. scope .. " root configured" end
+    fs.mkdirp(root)
+    self.states[scope] = State.open(root)
+  end
+  return self.states[scope]
+end
+
+-- Index data is remote: nothing in it may name a path outside its package directory.
+local function safe_rel(p)
+  if type(p) ~= "string" or p == "" or p:sub(1, 1) == "/" or p:find("\\", 1, true) or p:find("%z") then return false end
+  for part in p:gmatch("[^/]+") do if part == ".." or part == "." then return false end end
+  return true
+end
+local function safe_name(n) return type(n) == "string" and n:match("^[%w][%w%._%-]*$") ~= nil end
+
+local function base_dir(self, st, kind, name)
+  if kind == "app" then return self.cfg.appdir .. "/" .. name end
+  return st.root
+end
+
+local function split_dep(s) local n, c = s:match("^(%S+)%s*(.*)$"); return n, c end
+
+local function launcher(appdir, name, entry)
+  local dir = appdir .. "/" .. name
+  return ("#!/bin/lua\npackage.path = %q .. package.path\narg[0] = %q; return dofile(arg[0])\n")
+    :format(dir .. "/lua_modules/?.lua;" .. dir .. "/?.lua;", dir .. "/" .. entry)
+end
+
+local function owners(st)
+  local o = {}
+  for _, n in ipairs(st:names()) do
+    local r = st:get(n)
+    if r and r.base ~= "app" then for f in pairs(r.files or {}) do o[f] = n end end
+  end
+  return o
+end
+
+local function remove_files(self, st, rec)
+  local base = base_dir(self, st, rec.kind, rec.name)
+  for f in pairs(rec.files or {}) do
+    fs.remove(base .. "/" .. f)
+    fs.prune((base .. "/" .. f):match("^(.*)/[^/]*$"), rec.kind == "app" and base or st.root)
+  end
+  for _, p in pairs(rec.launchers or {}) do fs.remove(p) end
+  if rec.kind == "app" then fs.prune(base, self.cfg.appdir) end
+end
+
+-- plan: from the resolver. requested: name -> constraint text the user typed (these join the world set)
+function I:apply(plan, requested)
+  requested = requested or {}
+  local scopes, jobs, own_cache, made = {}, {}, {}, {}
+  local function fail(code, msg)
+    for _, st in pairs(scopes) do st:clear_staging(); st:unlock() end
+    return nil, msg, code
+  end
+
+  for _, a in ipairs(plan.actions) do
+    if a.scope ~= "firmware" and not scopes[a.scope] then
+      local st, err = self:state(a.scope)
+      if not st then return nil, err, 1 end
+      local ok, lerr = st:lock()
+      if not ok then return nil, lerr, 1 end
+      scopes[a.scope] = st
+    end
+  end
+
+  -- 1. validate everything before touching the disk
+  local total = 0
+  for _, a in ipairs(plan.actions) do
+    if a.action == "install" then
+      local doc, err = self.index:package(a.name)
+      local meta = doc and doc.versions[a.version]
+      if not meta then return fail(4, err or ("index has no " .. a.name .. " " .. a.version)) end
+      if not safe_name(a.name) then return fail(1, "unsafe package name: " .. tostring(a.name)) end
+      local st = scopes[a.scope]
+      local kind = doc.kind == "app" and "app" or "lib"
+      local base = base_dir(self, st, kind, a.name)
+      own_cache[a.scope] = own_cache[a.scope] or owners(st)
+      local own = kind == "lib" and own_cache[a.scope] or {}
+      local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta }
+      for dest, f in pairs(meta.files or {}) do
+        if not safe_rel(dest) then return fail(1, ("%s: unsafe file path '%s' in index"):format(a.name, dest)) end
+        local target = base .. "/" .. dest
+        if fs.exists(target) and own[dest] ~= a.name then
+          local old = kind == "app" and st:get(a.name)
+          if not old then
+            return fail(1, ("%s: %s exists and is %s (not overwritten)"):format(a.name, target,
+              own[dest] and ("owned by " .. own[dest]) or "not managed by vpm"))
+          end
+        end
+        job.files[#job.files + 1] = { dest = dest, url = f.url, sha256 = f.sha256, size = f.size,
+                                      existed = fs.exists(target) }
+        total = total + (f.size or 0)
+      end
+      for cmd, entry in pairs(type(meta.bin) == "table" and meta.bin or {}) do
+        if not safe_name(cmd) or not safe_rel(entry) then return fail(1, a.name .. ": unsafe bin entry in index") end
+      end
+      table.sort(job.files, function(x, y) return x.dest < y.dest end)
+      jobs[#jobs + 1] = job
+    end
+  end
+  if self.cfg.free_space and self.cfg.reserve then
+    local free = self.cfg.free_space()
+    if free and free - total < self.cfg.reserve then
+      return fail(4, ("not enough flash: need %d bytes, %d free, %d must stay free"):format(total, free, self.cfg.reserve))
+    end
+  end
+
+  -- 2. download and verify everything into staging; nothing is in place yet
+  for _, j in ipairs(jobs) do
+    for _, f in ipairs(j.files) do
+      if not f.url then return fail(4, ("%s: no download URL for %s"):format(j.a.name, f.dest)) end
+      local path = j.st:staging(j.a.name) .. "/" .. f.dest
+      local dir = path:match("^(.*)/[^/]*$")
+      if not made[dir] then
+        local ok, merr = fs.mkdirp(dir)
+        if not ok then return fail(1, merr) end
+        made[dir] = true
+      end
+      local out, oerr = io.open(path, "wb")
+      if not out then return fail(1, oerr) end
+      local h, n = hashmod.new(), 0
+      local status, err = self.transport.get(f.url, function(c) out:write(c); h:update(c); n = n + #c end)
+      out:close()
+      if status ~= 200 then return fail(4, ("download of %s failed: %s"):format(f.url, err or status)) end
+      if f.size and n ~= f.size then return fail(4, ("%s %s: size %d, expected %d"):format(j.a.name, f.dest, n, f.size)) end
+      if h:hex() ~= f.sha256 then return fail(4, ("%s %s: sha256 mismatch"):format(j.a.name, f.dest)) end
+    end
+  end
+
+  -- 3. commit: replace old versions, move files, write the record last
+  local when = os.date("%Y-%m-%d", self.now())
+  local versions = {}
+  for _, a in ipairs(plan.actions) do versions[a.name] = a.version end
+  for _, j in ipairs(jobs) do
+    local st, a = j.st, j.a
+    local old = st:get(a.name)
+    if old then remove_files(self, st, old); made = {} end
+    for _, f in ipairs(j.files) do
+      local target = j.base .. "/" .. f.dest
+      local tdir = target:match("^(.*)/[^/]*$")
+      local ok, err = true, nil
+      if not made[tdir] then ok, err = fs.mkdirp(tdir); made[tdir] = ok end
+      if ok then
+        if f.existed and fs.exists(target) then fs.remove(target) end
+        ok, err = fs.rename(st:staging(a.name) .. "/" .. f.dest, target)
+      end
+      if not ok then return fail(1, ("cannot place %s: %s (run 'vpm check')"):format(target, tostring(err))) end
+    end
+    local rec = { name = a.name, version = a.version, kind = j.kind, base = j.kind, scope = a.scope,
+                  reason = requested[a.name] and "world" or ((old and old.reason) or "dep"),
+                  files = {}, deps = {}, resolved = {}, installed = when }
+    for _, f in ipairs(j.files) do rec.files[f.dest] = f.sha256 end
+    for _, d in ipairs(j.meta.deps or {}) do
+      local n, c = split_dep(d)
+      if n ~= "lua" then rec.deps[n] = c; rec.resolved[n] = versions[n] end
+    end
+    local bin = type(j.meta.bin) == "table" and j.meta.bin or {}
+    if next(bin) then
+      rec.bin, rec.launchers = bin, {}
+      fs.mkdirp(self.cfg.bindir)
+      for cmd, entry in pairs(bin) do
+        local p = self.cfg.bindir .. "/" .. cmd
+        fs.write(p, launcher(self.cfg.appdir, a.name, entry))
+        rec.launchers[cmd] = p
+      end
+    end
+    local ok, err = st:put(rec)
+    if not ok then return fail(1, "cannot write record: " .. tostring(err)) end
+  end
+
+  -- 4. world set; reused packages the user named are promoted from dependency to world
+  for scope, st in pairs(scopes) do
+    local world = st:world()
+    for name, c in pairs(requested) do
+      local rec = st:get(name)
+      if rec then
+        world[name] = c
+        if rec.reason ~= "world" then rec.reason = "world"; st:put(rec) end
+      end
+    end
+    st:set_world(world)
+    st:clear_staging()
+    st:unlock()
+  end
+  return true
+end
+
+-- Remove packages from a scope. Refuses while another record needs one, unless force.
+function I:remove(names, scope, force)
+  local st, err = self:state(scope)
+  if not st then return nil, err, 1 end
+  local gone = {}
+  for _, n in ipairs(names) do gone[n] = true end
+  for _, n in ipairs(names) do
+    if not st:get(n) then return nil, n .. " is not installed in the " .. scope .. " scope", 1 end
+  end
+  if not force then
+    for _, other in ipairs(st:names()) do
+      if not gone[other] then
+        local r = st:get(other)
+        for dep in pairs(r and r.deps or {}) do
+          if gone[dep] then return nil, ("%s is needed by %s (use --force to remove anyway)"):format(dep, other), 3 end
+        end
+      end
+    end
+  end
+  local ok, lerr = st:lock()
+  if not ok then return nil, lerr, 1 end
+  local world = st:world()
+  for _, n in ipairs(names) do
+    remove_files(self, st, st:get(n))
+    st:delete(n)
+    world[n] = nil
+  end
+  st:set_world(world)
+  st:unlock()
+  return true
+end
+
+-- Verify installed files against their recorded hashes. Returns a list of problems.
+function I:check(scope)
+  local st = self:state(scope)
+  local problems = {}
+  for _, n in ipairs(st:names()) do
+    local r = st:get(n)
+    local base = base_dir(self, st, r.kind, n)
+    for f, want in pairs(r.files or {}) do
+      local data = fs.read(base .. "/" .. f)
+      if not data then problems[#problems + 1] = ("%s: missing %s"):format(n, f)
+      elseif hashmod.hex(data) ~= want then problems[#problems + 1] = ("%s: modified %s"):format(n, f) end
+    end
+  end
+  if fs.exists(st.dir .. "/lock") then problems[#problems + 1] = "stale lock file (a previous run did not finish)" end
+  return problems
+end
+
+return M

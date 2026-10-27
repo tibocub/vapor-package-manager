@@ -48,3 +48,28 @@ impact reports for very large installed sets, bytecode precompilation (needs `lu
 Part of the first code milestone: a benchmark script that installs a synthetic 20-package closure from a
 `file://` mirror and reports peak `collectgarbage("count")`, `free` and time, run on the sim and the RP2040.
 The budgets above are guesses until that exists.
+
+## Measured: installer on the RP2040-Zero (2026-10-27, `lib/vpm/*` as of the state/installer commit)
+
+Test: `file://` mirror on the board's littlefs, 7 libraries in a diamond (11 files, 11 KB), resolve + install +
+rehash + remove. Stripped bytecode, early-GC default of vlua unless noted.
+
+| item | result |
+|---|---|
+| code, 8 modules | source 35 KB: 1.5 s to load, **84 KB of heap**. Stripped bytecode (built on the PC, loads fine on the ARM board: R4 answered) 25 KB file: 0.8 s, **53 KB of heap** |
+| Lua heap during the whole run | 111 KB peak with the default GC; **152 KB with a relaxed GC** (200,100) |
+| resolve, 7 packages | 1.56 s (0.61 s relaxed GC) |
+| install, 7 packages / 11 files | **28.6 s** (25.4 s relaxed GC); hashing only ~1.6 s of it (7 KB/s pure Lua) |
+| rehash check / remove | 4.2 s / 5.9 s |
+
+Where the install time goes: **flash filesystem operations**, measured separately: create+write a 1 KB file
+**298 ms**, rename **415 ms**, remove 130 ms, mkdir 114 ms, existence check 35 ms, read 30 ms. The first version
+needed 34.4 s; removing repeated existence checks and mkdirs saved 17%. Stage-then-rename writes every file and
+every record twice. The honest consequences:
+
+1. Cost is per **file** (~0.3-0.9 s each), not per byte: a 40-file package takes ~30 s even if it is 100 KB.
+   Pure-Lua rocks with many tiny files hurt most; packing a package into one file would be much faster.
+2. The relaxed GC is faster but breaks the RAM budget (peak 152 KB vs the 100 KB hard limit), so it is not free.
+3. Even at default GC the peak (111 KB, of which 53 KB is code) is above the 100 KB hard budget: load modules per
+   command (`remove`/`list` need no resolver or network code) and make the hash loop produce less garbage.
+

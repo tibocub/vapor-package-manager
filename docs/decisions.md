@@ -56,4 +56,8 @@ shadowing (dependency-resolution.md).
   rule 1 (global needs global) binds only packages being newly installed globally, a reused global package may be
   served by a local shadow; in `auto` mode every new global candidate has a local fallback; `scm`/`dev` versions
   only when a constraint names one; error messages prefer the specific cause (deepest) over "no combination".
+- Command naming (user): long explicit canonical names, short forms are aliases only where intuitive.
+- State layer (`state.lua`, `fs.lua`), `file://` transport, index client and installer written and tested
+  (`tests/test_install.lua`: stage/verify/rename, unmanaged files, path escapes from a hostile index, locks,
+  hash failures, programs with launchers, local scope). First on-board measurements in ram-budget.md.
 

@@ -66,7 +66,8 @@ No symlinks anywhere (littlefs); launchers are the symlink substitute.
 
 ```
 notes              any version the resolver likes (highest compatible)
-notes@1.2          prefix match, same as LuaRocks "~> 1.2": 1.2, 1.2.x
+notes@1          every 1.x            (LuaRocks "~> 1")
+notes@1.2          1.2 and 1.2.x, not 1.3  (LuaRocks "~> 1.2"; npm users would write 1.2.x: same meaning)
 notes@1.2.3-1      exactly that version
 notes@">=1.0,<2"   a full constraint (starts with an operator); quote it for the shell
 ./dir  file:///sd/x.rock-dir   a local source (see "Local sources")
@@ -79,12 +80,21 @@ Global options: `-g` global scope, `-n/--dry-run`, `-y/--yes` (no prompt), `--de
 Exit codes: **0** success, **1** error, **2** usage, **3** unresolvable (conflict; message names the chain),
 **4** network or integrity failure (nothing was changed).
 
-Prompting: a plan is applied without asking if it only adds packages; it asks (unless `-y`) when it removes,
-replaces, shadows or touches the global scope from a local command. Without a terminal and without `-y`
-it refuses.
+Prompting (user decision 2026-10-27): a plan that only installs **the packages the user named** is applied without
+asking (`vpm i -g ansicolors` with no dependencies). Anything else asks, apt/dnf style, unless `-y`: extra
+dependencies to fetch, removals, replacements, shadowing, or the global scope touched from a local command. The
+prompt lists everything and the total download and installed size:
+```
+The following packages will be installed:
+  notes 0.3.1-1 (global)   penlight 1.14.0-1 (global)   lua-term 0.8-1 (global)
+Download: 58 KB   Installed: 96 KB   Free flash after: 612 KB
+Continue? [Y/n]
+```
+Without a terminal and without `-y` it refuses.
 
 | command | does | scope default |
 |---|---|---|
+| `vpm init` | create a `vpm.lua` in the current directory (asks name, kind, entry file; `-y` takes defaults); no network | local |
 | `vpm i [spec...]` | install the specs; no spec = what `./vpm.lua` asks for (updates `vpm-lock.lua`) | local |
 | `vpm i -g spec...` | install system-wide: a library, or a program with launchers | global |
 | `vpm rm spec...` | remove the named packages; refuses if another record needs one (`--force` overrides, plan lists the breakage) | as `i` |
@@ -99,7 +109,7 @@ it refuses.
 | `vpm clean` | remove dependency-only packages nothing uses (`full`; on `small` it is `rm` of what `ls` shows as unused) | both |
 | `vpm adopt NAME VER FILE...` | turn unmanaged files into a record (`full`) | global |
 
-**Required on the RP2040 (`small`):** `i`, `rm`, `ls`, `why`, `up`, `info`, `check`, `world`.
+**Required on the RP2040 (`small`):** `init`, `i`, `rm`, `ls`, `why`, `up`, `info`, `check`, `world`.
 
 ### `vpm i` in detail
 
@@ -167,10 +177,11 @@ Registration is the default and `--no-register` opts out; unregistered use of gl
 ## Not in v1
 
 Optional dependencies, per-package build options ("USE flags"), a versioned store (slots), namespaced requires,
+`vpm publish` and any git support (Q11, Q12),
 signature verification (the format leaves room, Q7), bytecode install (R4 first), `shell` libraries, installing
 older versions that the filter did not index, publishing.
 
 ## Open points (see open-questions.md)
 
-Q4 is answered above (PROPOSED: apps in `appdir`, shared libs by default, private libs only on conflict), Q5
-(PROPOSED: register by default), Q10 (PROPOSED: `profile` in the config file). Q7, Q8, Q9 remain open.
+Q4 is answered above (accepted 2026-10-27, to be validated by daily use on real boards: apps in `appdir`, shared
+libs by default, private libs only on conflict), Q5 (accepted: register by default), Q10 (PROPOSED: `profile` in the config file). Q7, Q8, Q9 remain open.

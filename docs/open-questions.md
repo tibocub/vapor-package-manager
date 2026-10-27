@@ -46,6 +46,20 @@ accept breakage and report it?
 Which commands and options does the RP2040 build include (`search`, bytecode) versus a PC or ESP32 build?
 Declarative per-board config, like the rest of vaporOS?
 
+## Q11. Publishing: what does `vpm publish` do, and where does it send?
+Packages are not hosted by us (non-goal); the index points at upstream sources. So publishing = **submitting a
+small manifest** (name, version, source URL + tag, kind) to the program registry, whose index builder fetches,
+checks and hashes it exactly like a LuaRocks rock. Submission needs a transport: an HTTPS API endpoint, the
+GitHub REST API (opens a pull request with only HTTPS + JSON, no git client), or a file the author submits by
+hand. `vpm init` and a local `vpm check-manifest` are needed first and need none of this. Realistically publishing
+happens from a PC first; on a board it needs TLS (R1) and a credential on the device.
+
+## Q12. A git for vaporOS (separate project, not a vpm dependency)
+Wanted for its own sake. A subset (clone/fetch over smart-HTTP, checkout, status, log, add, commit, push) is
+feasible; full git is not. Needs zlib inflate/deflate, sha1, pack and delta parsing, the index format and the
+HTTP(S) client. Memory is the limit: delta resolution and large packs do not fit in 187 KB, so it is a
+"small repositories" tool on the RP2040. See the discussion in the chat of 2026-10-27; own repo when started.
+
 ## Research items
 - **R1** HTTPS/TLS handshake RAM and time on a Pico W (mbedTLS, CA bundle size). Hardware not available yet.
 - **R2** Which NuttX simulator networking mode reaches the host network (TAP vs usrsock) and what it needs.

@@ -48,4 +48,8 @@ shadowing (dependency-resolution.md).
   bytecode loads in 0.01 s with 33 KB, so ship bytecode; pure-Lua sha256 is 7 KB/s, so hashing must be C.
   vpm should relax the early-GC setting for itself (resolver code is 3.7x slower under `pause 100`).
 - Write the specification before the device client: [spec.md](spec.md). Its PROPOSED items are open.
+- Accepted: appdir + launcher (validate in daily use on real boards), register projects by default, `name@1.2`
+  = LuaRocks prefix match (equals "1.2.x"), prompt rule extended: ask whenever dependencies beyond the named
+  packages must be fetched (apt-style summary with sizes).
+- `vpm init` is in v1. `vpm publish` and git are open (Q11, Q12) and do not block each other.
 

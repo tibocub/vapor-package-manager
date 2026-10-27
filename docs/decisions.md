@@ -52,4 +52,8 @@ shadowing (dependency-resolution.md).
   = LuaRocks prefix match (equals "1.2.x"), prompt rule extended: ask whenever dependencies beyond the named
   packages must be fetched (apt-style summary with sizes).
 - `vpm init` is in v1. `vpm publish` and git are open (Q11, Q12) and do not block each other.
+- Resolver implemented (`lib/vpm/resolver.lua`, `tests/test_resolver.lua`). Details settled while testing:
+  rule 1 (global needs global) binds only packages being newly installed globally, a reused global package may be
+  served by a local shadow; in `auto` mode every new global candidate has a local fallback; `scm`/`dev` versions
+  only when a constraint names one; error messages prefer the specific cause (deepest) over "no combination".
 

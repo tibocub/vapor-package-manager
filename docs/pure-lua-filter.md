@@ -129,3 +129,13 @@ The rest are real: `bit` (88 rocks; Lua 5.4 has no `bit` library: it has native 
 `socket.url` 24: rocks that need luasocket without saying so), `inspect`, `logger`.
 
 Known gaps: only the latest version of each rock is indexed; no `luac` bytecode, no signatures.
+
+### Resolver check against the real index (2026-10-27)
+
+`lib/vpm/resolver.lua` resolved every package of the index as a global install on a host Lua: **1,898 of 1,929**
+(0.03 ms each on the host; not yet measured on the board), largest closure 12 packages (luatest). The 31
+failures are all index gaps, not resolver bugs: 29 packages pin a dependency to an older release
+(`== 1.1.0-1`, `~> 0.17.1`) that the latest-only index does not contain, and 2 (debugger, emoji-clock) only publish
+an `scm` version, which is never chosen unless named. **Next index-builder change:** also index every version that
+another indexed package's constraint needs (and, later, all versions).
+

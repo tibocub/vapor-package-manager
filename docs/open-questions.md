@@ -11,7 +11,8 @@ Needs the user's call because it changes the system from a command that looks pr
 Flat is what we have: simple, current `package.path` unchanged. A versioned store (`<name>/<version>/`) lets
 two versions coexist globally (portage "slots", Nix-like) and removes most conflict cases, but needs a
 per-program path assembled at start (reading a lock file) because there are no symlinks. Proposal: flat first,
-keep the record format ready for a store.
+keep the record format ready for a store. **Decision (Claude, delegated by the user 2026-10-27): start flat,
+but design every record and the resolver around (name, version) so a store is an addition, not a rewrite.**
 
 ## Q3. Is a derived, published index acceptable?
 Needed because the device cannot evaluate rockspecs or hold the manifest. The cost is that someone runs the

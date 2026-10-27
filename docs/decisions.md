@@ -24,3 +24,13 @@ Dates are absolute. A decision here overrides any proposal in the other document
 
 See [open-questions.md](open-questions.md). Notably: derived index (Q3), `--deps=auto` (Q1), closure rule for
 shadowing (dependency-resolution.md).
+
+## 2026-10-27 (later)
+
+- Q1: accepted: reuse what is installed, `--deps=auto` (global unless it conflicts), plan printed first.
+- Q2: delegated to Claude; chosen: flat global tree first, records and resolver keyed by (name, version) so a
+  versioned store can be added later. Reason: littlefs has no symlinks, a store needs a per-program path
+  assembled at start, and the conflict cases it removes can already be handled by local copies.
+- Q3: accepted: the **pure-Lua filter and the index builder are the first code**, not a later feature.
+- Prerequisite P1 (shebangs in vaporshell) done.
+

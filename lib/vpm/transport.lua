@@ -1,6 +1,6 @@
 -- Transports: get(url, sink) streams the body to sink(chunk) and returns an HTTP-like status (200, 404...).
--- file:// is the offline path (an SD card, a mirror directory, tests). http(s):// is added when vaporOS has an
--- HTTP client (docs/vaporos-prerequisites.md P4); until then it reports a clear error.
+-- file:// is the offline path (an SD card, a mirror directory, tests). http:// goes through vpm.http over vsock;
+-- https:// answers 502 until a TLS connection exists (docs/vaporos-prerequisites.md P4). M.connect can be replaced (tests).
 local fs = require("vpm.fs")
 local M = {}
 
@@ -19,7 +19,10 @@ function M.get(url, sink)
     f:close()
     return 200
   end
-  if url:match("^https?://") then return 501, "no HTTP client in this build yet" end
+  if url:match("^https?://") then
+    local http = require("vpm.http")
+    return http.get(url, sink, M.connect or http.vsock_connect)
+  end
   return 400, "unsupported URL: " .. url
 end
 

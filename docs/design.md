@@ -2,16 +2,16 @@
 
 ## Vocabulary
 
-| term | meaning |
-|---|---|
-| **package** | a named, versioned set of files, Lua modules and/or commands |
-| **library** (`kind = "lib"`) | a package other code `require`s |
-| **program** (`kind = "app"`) | a package with commands (`bin`) the user runs; has its own dependencies |
-| **project** | a directory the user works in, with a `vpm.lua` manifest, not installed as a package |
-| **scope** | where a package is installed: **global** (system-wide) or **local** (a program's or project's `lua_modules/`) |
-| **provided** | a library built into the firmware (lfs, lpeg, cjson); satisfies dependencies, is never downloaded |
-| **world** | the packages the user explicitly asked to install (portage's term); everything else was pulled in as a dependency |
-| **index** | the small metadata service vpm reads; derived from LuaRocks, see [index-and-network.md](index-and-network.md) |
+| term                         | meaning                                                                                                           |
+|------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| **package**                  | a named, versioned set of files, Lua modules and/or commands                                                      |
+| **library** (`kind = "lib"`) | a package other code `require`s                                                                                   |
+| **program** (`kind = "app"`) | a package with commands (`bin`) the user runs; has its own dependencies                                           |
+| **project**                  | a directory the user works in, with a `vpm.lua` manifest, not installed as a package                              |
+| **scope**                    | where a package is installed: **global** (system-wide) or **local** (a program's or project's `lua_modules/`)     |
+| **provided**                 | a library built into the firmware (lfs, lpeg, cjson); satisfies dependencies, is never downloaded                 |
+| **world**                    | the packages the user explicitly asked to install (portage's term); everything else was pulled in as a dependency |
+| **index**                    | the small metadata service vpm reads; derived from LuaRocks, see [index-and-network.md](index-and-network.md)     |
 
 Global root on a board is `/flash/lib/lua`, on the sim `/usr/lib/lua` (`CONFIG_VAPOROS_VLUA_LIBDIR`). Files
 copied there by hand are legitimate: vpm treats them as *unmanaged* packages (see

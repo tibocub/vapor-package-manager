@@ -78,4 +78,8 @@ shadowing (dependency-resolution.md).
   `tools/board-test-mirror.lua`. The board uploads failed repeatedly (see the chat of 2026-10-27): a transfer that
   stalls leaves vaporOS's `recv.lua` waiting for bytes, and every later attempt then fails until the console is
   recovered. Free-heap measurement during a run is therefore still open.
+- Network on the simulator (2026-10-27, user: "continue without the RP2040, keep its limits in mind, use the sim's
+  network"): vsock (TCP) and vtls (TLS) are C primitives in vaporOS, the HTTP client is Lua in vpm. Certificate
+  verification cannot be turned off. Verified: `vpm install -g -y penlight inspect middleclass serpent lustache etlua`
+  (6 packages, 8 files from raw.githubusercontent.com over TLS, sha256-checked), and the libraries work.
 

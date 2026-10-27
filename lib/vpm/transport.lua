@@ -21,6 +21,7 @@ function M.get(url, sink)
   end
   if url:match("^https?://") then
     local http = require("vpm.http")
+    http.cafile = M.cafile
     return http.get(url, sink, M.connect or http.vsock_connect)
   end
   return 400, "unsupported URL: " .. url

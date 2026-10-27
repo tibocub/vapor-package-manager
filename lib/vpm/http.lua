@@ -111,9 +111,15 @@ function M.get(url, sink, connect, redirects)
   return 200
 end
 
--- connect function over vsock (http only until TLS exists)
+-- connect function over vsock / vtls. M.cafile (the config's `cafile`) is the PEM bundle https servers are verified
+-- against; there is no way to skip verification.
 function M.vsock_connect(scheme, host, port)
-  if scheme == "https" then return nil, "https needs TLS, which this build does not have yet" end
+  if scheme == "https" then
+    if not M.cafile then return nil, "https needs `cafile` (a PEM bundle of trusted roots) in the vpm config" end
+    local ok, vtls = pcall(require, "vtls")
+    if not ok then return nil, "this build has no TLS (vtls)" end
+    return vtls.connect(host, port, M.cafile)
+  end
   return require("vsock").connect(host, port)
 end
 

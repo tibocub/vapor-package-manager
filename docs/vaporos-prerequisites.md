@@ -27,3 +27,24 @@ way and needs only P1/P2.
 - zlib/tar on the device: the index lists individual files ([index-and-network.md](index-and-network.md)).
 - Symlinks: not used.
 - Dynamic loading: not possible and not wanted; native libraries are firmware features.
+
+## Status of P4 / P10 on the simulator (2026-10-27)
+
+The simulator now has real networking, which is how vpm fetches from LuaRocks sources today:
+
+- **P10 (sockets):** `require("vsock")` (vaporOS `vlua/vsock.c`): `connect/send/recv/close`, polled non-blocking TCP.
+  The simulator's usrsock bridge needed two things: the custom transport (`NET_USRSOCK_CUSTOM`) and a patch,
+  `sim-usrsock-event-loop` (upstream regression, nothing was ever received). `hardware/network/sim-usrsock.conf`.
+- **P4 (HTTPS):** `require("vtls")` (`vlua/vtls.c`, mbedTLS 3.6, TLS 1.2): certificate **and** host name are always
+  verified against a PEM bundle (`cafile` in the vpm config). Checked: an expired and a wrong-host certificate are
+  rejected, GitHub raw files and luarocks.org are fetched. The HTTP/1.1 client itself is Lua (`lib/vpm/http.lua`).
+  It needed a secure entropy source, so the sim got `/dev/random` and `/dev/urandom` backed by the host
+  (`sim-dev-random-host` patch), a 256 KB vlua stack and 40 nested C calls (`boards/sim-nsh/board.conf`).
+- **Not yet:** the real board. Nothing here is sized for 264 KB: the CA bundle is 185 KB of PEM, a TLS handshake
+  wants tens of KB of heap on top of vpm's 121 KB peak, and only the Pico W has a radio. Next: measure on the sim with
+  `/proc/meminfo`-like counters, then decide how much of this the RP2040 can carry (a trimmed bundle with the 3-4 roots
+  GitHub and luarocks need, or plain HTTP to a nearby mirror with signed index entries; see index-and-network.md).
+- CA bundle on the simulator: copied by hand (`tools/sim-vpm.sh` does it) from the host; a sim feature that exposes it
+  without a copy is still to do.
+- Known index gap: 11 packages have no download URL (luaunit among them); `vpm install` refuses them with a message.
+

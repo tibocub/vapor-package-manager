@@ -48,6 +48,6 @@ s, e = get("http://h/", loop)
 assert(s == 502 and e:match("redirects"))
 
 s, e = http.get("https://h/", function() end, http.vsock_connect)
-assert(s == 502 and e:match("TLS"))
+assert(s == 502 and e:match("cafile"), e)
 
 print("http ok")

@@ -104,6 +104,7 @@ local function context(parsed, env)
       local transport = env.transport or require("vpm.transport")
       local decode = env.decode or (function() local ok, c = pcall(require, "cjson"); return ok and c.decode end)()
       if not decode then error("no JSON decoder available") end
+      transport.cafile = cfg.cafile               -- trusted roots for https (the module only loads vpm.http when it needs it)
       built.transport = transport
       built.index = require("vpm.index").new{ base = cfg.index or error("no index configured"), transport = transport, decode = decode }
     end

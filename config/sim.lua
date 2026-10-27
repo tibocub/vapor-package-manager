@@ -4,6 +4,7 @@ return {
   appdir  = "/usr/apps",
   bindir  = "/usr/bin",
   index   = "file:///usr/mirror/index/v1",
+  cafile  = "/usr/lib/lua/ca.pem",   -- the host's CA bundle copied next to the libraries (docs/vaporos-prerequisites.md)
   reserve = 0,
   profile = "full",
 }

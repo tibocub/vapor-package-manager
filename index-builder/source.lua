@@ -16,6 +16,7 @@ local function git_url(u)
   u = u:gsub("^git%+", ""):gsub("^git://", "https://")
   if u:match("^git@") or u:match("^ssh://") then return nil end
   if not u:match("^https?://") then return nil end
+  if u:match("^https?://[^/]*@") then return nil end   -- credentials in a URL must never be copied into an index
   return u
 end
 
@@ -24,27 +25,44 @@ local function is_archive(u)
   for _, p in ipairs(ARCHIVE) do if u:match(p) then return true end end
 end
 
--- A function mapping a path inside the source dir to a stable raw URL, when the host offers one.
-local function raw_for_git(url, commit, prefix)
-  local o, r = url:match("^https://github%.com/([^/]+)/([^/]+)")
-  if o then
-    r = r:gsub("%.git$", "")
-    return function(path) return ("https://raw.githubusercontent.com/%s/%s/%s/%s"):format(o, r, commit, prefix .. path) end
-  end
-  o, r = url:match("^https://gitlab%.com/([^/]+)/([^/]+)")
-  if o then
-    r = r:gsub("%.git$", "")
-    return function(path) return ("https://gitlab.com/%s/%s/-/raw/%s/%s"):format(o, r, commit, prefix .. path) end
-  end
-end
+-- Stable raw-file URL for `path` (relative to the source root), computed from the recorded origin so the rules can
+-- change without re-fetching. nil when the host offers no per-file URL we know how to build.
+local GITLAB = { ["gitlab.com"] = true, ["framagit.org"] = true, ["salsa.debian.org"] = true, ["invent.kde.org"] = true }
+local GITEA  = { ["codeberg.org"] = true, ["forge.axfive.net"] = true, ["git.kokolor.es"] = true, ["spu.tnik.org"] = true, ["buffering.party"] = true }
 
--- github.com/o/r/archive/<ref>.tar.gz|zip  (also .../archive/refs/tags/<ref>)
-local function raw_for_archive(url, prefix)
-  local o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/archive/(.+)%.tar%.gz$")
-  if not o then o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/archive/(.+)%.zip$") end
-  if not o then return nil end
-  ref = ref:gsub("^refs/tags/", ""):gsub("^refs/heads/", "")
-  return function(path) return ("https://raw.githubusercontent.com/%s/%s/%s/%s"):format(o, r, ref, prefix .. path) end
+function M.raw_url(origin, path)
+  local url = origin.url
+  if origin.type == "git" and origin.commit then
+    local host, proj = url:match("^https://([^/]+)/(.+)$")
+    if not host then return nil end
+    proj = proj:gsub("%.git$", ""):gsub("/$", "")
+    if host == "www.github.com" then host = "github.com" end
+    if host == "github.com" and proj:match("^[^/]+/[^/]+$") then
+      return ("https://raw.githubusercontent.com/%s/%s/%s"):format(proj, origin.commit, path)
+    elseif GITLAB[host] or host:match("^gitlab%.") then
+      return ("https://%s/%s/-/raw/%s/%s"):format(host, proj, origin.commit, path)
+    elseif GITEA[host] then
+      return ("https://%s/%s/raw/commit/%s/%s"):format(host, proj, origin.commit, path)
+    elseif host == "gitee.com" then
+      return ("https://gitee.com/%s/raw/%s/%s"):format(proj, origin.commit, path)
+    elseif host == "bitbucket.org" then
+      return ("https://bitbucket.org/%s/raw/%s/%s"):format(proj, origin.commit, path)
+    elseif host == "git.sr.ht" then
+      return ("https://git.sr.ht/%s/blob/%s/%s"):format(proj, origin.commit, path)
+    end
+  elseif origin.type == "archive" then
+    -- github.com/o/r/archive/<ref>.tar.gz | .zip | archive/refs/tags/<ref>... | tarball/<ref> | zipball/<ref>
+    local o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/archive/(.+)%.tar%.gz$")
+    if not o then o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/archive/(.+)%.zip$") end
+    if not o then o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/tarball/(.+)$") end
+    if not o then o, r, ref = url:match("^https://github%.com/([^/]+)/([^/]+)/zipball/(.+)$") end
+    if not o then o, r, ref = url:match("^https://codeload%.github%.com/([^/]+)/([^/]+)/[%a.]+/(.+)$") end
+    if o then
+      ref = ref:gsub("^refs/tags/", ""):gsub("^refs/heads/", "")
+      return ("https://raw.githubusercontent.com/%s/%s/%s/%s"):format(o, r, ref, path)
+    end
+  end
+  return nil
 end
 
 local function only_dir(dir)
@@ -63,7 +81,7 @@ function M.fetch(rs, dir)
   local url = src.url
   run("mkdir -p " .. q(dir))
   if is_archive(url) then
-    if not url:match("^https?://") then return nil, "source-scheme" end
+    if not url:match("^https?://") or url:match("^https?://[^/]*@") then return nil, "source-scheme" end
     local file = dir .. "/archive.bin"
     local ok = run(("curl -sSfL -m 120 --max-filesize 30000000 -o %s %s"):format(q(file), q(url)))
     if not ok then return nil, "source-download" end
@@ -77,8 +95,7 @@ function M.fetch(rs, dir)
     -- source.dir names the directory the archive unpacks into (not a subdirectory of it)
     local top = (src.dir and run("test -d " .. q(ex .. "/" .. src.dir)) and src.dir) or only_dir(ex)
     local root = top and (ex .. "/" .. top) or ex
-    local rawf = raw_for_archive(url, "")
-    return root, { type = "archive", url = url, sha256 = okh and h:match("^(%x+)") or nil, raw = rawf }
+        return root, { type = "archive", url = url, sha256 = okh and h:match("^(%x+)") or nil }
   end
 
   local gurl = git_url(url)
@@ -93,7 +110,7 @@ function M.fetch(rs, dir)
   commit = commit:match("^(%x+)")
   run("rm -rf " .. q(work .. "/.git"))
   -- for git, source.dir only names the clone directory: the tree root is the repository root
-  return work, { type = "git", url = gurl, commit = commit, ref = ref, raw = raw_for_git(gurl, commit, "") }
+  return work, { type = "git", url = gurl, commit = commit, ref = ref }
 end
 
 M.q, M.run = q, run

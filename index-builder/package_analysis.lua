@@ -109,9 +109,8 @@ function M.analyze(rs, root, origin)
     local hashes = {}
     for h, p in out:gmatch("(%x+)  ([^\n]+)") do hashes[p] = h end
     for _, f in ipairs(paths) do
-      local ent = { sha256 = hashes[root .. "/" .. f.src], size = nil }
+      local ent = { sha256 = hashes[root .. "/" .. f.src], src = f.src }
       local fh = io.open(root .. "/" .. f.src, "rb"); ent.size = fh:seek("end"); fh:close()
-      if origin.raw then ent.url = origin.raw(f.src) end
       if f.bin then entry.bin[f.bin] = f.dest end
       entry.files[f.dest] = ent
     end

@@ -109,6 +109,11 @@ if cmd == "emit" then
         undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }
+      local files = {}
+      for dest, ent in pairs(r.files) do
+        files[dest] = { sha256 = ent.sha256, size = ent.size, url = source.raw_url(r.origin, ent.src) }
+      end
+      ver.files = files
       local kind = next(r.bin) and "app" or "lib"
       local shard = name:sub(1, 2):lower():gsub("[^%w]", "_")
       os.execute("mkdir -p " .. source.q(("%s/index/v1/p/%s"):format(out, shard)))

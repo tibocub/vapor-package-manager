@@ -115,15 +115,17 @@ Result (latest release of each rock, 2026-10-27):
 | installed files do not parse as Lua 5.4 (written for 5.1 syntax) | 23 |
 | rejected because a dependency was rejected | 909 |
 
-The index holds 15,747 files in 1,939 package files, 11 MB of JSON in total (a device reads only the few
-small files of the packages it resolves). 14,413 files have a stable GitHub raw URL pinned to a commit or tag;
-**169 packages have no downloadable file URL** (archives on private hosts such as dkjson or luaunit, and forges
-whose raw-URL pattern is not mapped yet: framagit, codeberg, sr.ht, plus GitHub release downloads). Those need
-either more URL rules (about 40 packages) or a mirror (question Q8).
+The index holds ~15,700 files in 1,929 package files (the latest run, after the dependency closure and removing
+URLs with credentials). Raw-file URLs are computed at emit time from the recorded origin and per-file source path
+(`source.raw_url`), so the rules can change without re-fetching. Rules exist for GitHub, GitLab-style forges
+(gitlab.com, framagit), Codeberg and a few Gitea hosts, sr.ht, gitee, bitbucket and GitHub archive URLs.
+`index-builder/verify.lua` downloads a random sample from every host and compares sha256: 57 files, 0 mismatches.
+Two Gitea hosts (code.tjp.lol, git.offblast.org) answer 403 to scripts, so their URLs cannot be verified and are
+omitted. **11 packages have no downloadable file URL** (private hosts such as dkjson's); they need a mirror (Q8).
+Credentials found in a source URL (a rockspec with an access token in it) cause the source to be refused, never copied.
 
 `undeclared_requires` is set on 744 packages. Most are host modules (kong, resty, telescope: already tagged).
 The rest are real: `bit` (88 rocks; Lua 5.4 has no `bit` library: it has native bitwise operators instead) and `socket` (41, plus
 `socket.url` 24: rocks that need luasocket without saying so), `inspect`, `logger`.
 
-Known gaps: only the latest version of each rock is indexed; the record keeps no per-file source path, so raw
-URL rules cannot be changed without re-fetching; no `luac` bytecode, no signatures.
+Known gaps: only the latest version of each rock is indexed; no `luac` bytecode, no signatures.

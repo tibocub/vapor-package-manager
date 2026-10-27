@@ -35,6 +35,7 @@ user asked for versus what was pulled in. Package data comes from **LuaRocks**, 
 
 | file | what |
 |---|---|
+| [docs/spec.md](docs/spec.md) | **the specification**: commands, paths, config, manifest, plan format, exit codes |
 | [docs/design.md](docs/design.md) | concepts, commands, scopes, program/library kinds, the overall shape |
 | [docs/dependency-resolution.md](docs/dependency-resolution.md) | versions, the resolver, the "global vs local" rules, a worked example |
 | [docs/pure-lua-filter.md](docs/pure-lua-filter.md) | how we decide a rock is pure Lua, and where that is unsafe |

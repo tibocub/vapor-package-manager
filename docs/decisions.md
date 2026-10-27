@@ -41,3 +41,11 @@ shadowing (dependency-resolution.md).
 - Rule 8 corrected: check what a rock *installs*, not everything in its repository.
 - Source stage and `index/v1` emission implemented; first full run: 1,939 packages.
 
+## 2026-10-27 (spec)
+
+- vpm is written in **Lua**, with C only for firmware primitives where they matter (sha256 first; maybe the
+  HTTP/TLS client). Measured on the RP2040: compiling vpm-sized source costs 0.54 s and 58 KB of heap, stripped
+  bytecode loads in 0.01 s with 33 KB, so ship bytecode; pure-Lua sha256 is 7 KB/s, so hashing must be C.
+  vpm should relax the early-GC setting for itself (resolver code is 3.7x slower under `pause 100`).
+- Write the specification before the device client: [spec.md](spec.md). Its PROPOSED items are open.
+

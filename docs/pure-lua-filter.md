@@ -28,6 +28,7 @@ For each rockspec of each version, evaluated in an empty sandboxed environment:
 | 8 | the source archive, once fetched, contains no `.c`, `.cpp`, `.h`, `.so`, `.dll` outside `doc/`, `test/`, `examples/` | catches `builtin` rocks whose `modules` omit native code, and `none` rocks that ship binaries |
 | 9 | the rock does not reference `ffi`, `jit.` (LuaJIT-only) in its modules | cheap grep; LuaJIT-only code cannot run on PUC Lua |
 | 10 | the source is fetchable without a build step (git tag, tarball or zip with a stable URL) | needed to compute hashes |
+| 11 | the rock is not written for a host application (Neovim, OpenResty/Kong, LÖVE, game engines): detected from its name, `description.labels` and dependencies | pure Lua, but needs an API vaporOS does not have; **found necessary by the first run** (see below) |
 
 `install.bin` entries are fine if they are Lua scripts; they turn the rock into a *program* candidate.
 
@@ -54,3 +55,39 @@ The heuristic will be wrong sometimes; the override file is how it gets fixed wi
 
 The index stores accepted rocks only, plus (for `vpm info`) a one-line reason for popular rejected ones, so
 that "why can't I install X?" has an answer: *"luasocket: native code (src/*.c)"*.
+
+## Measured results (2026-10-27, implemented in `index-builder/`)
+
+Run on the LuaRocks `manifest-5.4` (4,929 rocks, 33,294 versions), **latest release of each rock only**,
+rules 1-7 and 11 (rules 8-9 need the source archives and are not implemented yet, so the numbers are an upper
+bound). Fetching the 4,929 rockspecs took about 5.5 minutes with 8 parallel connections; the filter itself takes
+under a second. Reproduce: `lua index-builder/run.lua list MANIFEST`, `index-builder/fetch.sh LIST DIR`,
+`lua index-builder/run.lua report MANIFEST DIR`.
+
+| outcome | rocks | share |
+|---|---|---|
+| **accepted** (pure Lua, dependencies ok) | **1,663** | **33.7%** |
+| host-application API (Neovim 497, OpenResty/Kong 604, LÖVE 11, games 1) | 1,113 | 22.6% |
+| native source in `build.modules` | 365 | 7.4% |
+| depends on a rejected rock (root cause: native 359, build type 167, external lib 87, missing 34, host API 20) | ~675 | 13.7% |
+| build type `treesitter-parser` (all native) | 343 | 7.0% |
+| build type `make`, `command`, `hooks`, `cmake`, `l3build`, `rust-*`, others | ~600 | 12% |
+| external C libraries | 169 | 3.4% |
+| rest (`install.lib`, Lua version, bad data, rockspec missing) | ~20 | 0.4% |
+
+What this told us:
+
+1. **"Pure Lua" does not mean "usable".** Without rule 11, 2,594 rocks (52.6%) would have been offered, and
+   1,113 of them are plugins for software that is not on vaporOS. Rule 11 is data-driven (name, label and
+   dependency patterns in `filter.lua`) and will need curating; a label match like `love` can misfire, so a
+   flagged rock should be hidden by default and installable with an explicit override, not removed.
+2. **Sanity check passes:** penlight, argparse, inspect, dkjson, luaunit, serpent, middleclass, lustache, etlua,
+   lunajson, classic, say, luassert are accepted. lpeg, lfs and lua-cjson are correctly *not* downloadable
+   (native); the firmware provides them, and they are the most common dependencies among accepted rocks
+   (lpeg 64, lua-cjson 54, luafilesystem 52), which confirms the choice of built-in libraries.
+3. **Highest-leverage native additions** (rocks that block the most dependents): **luasocket blocks 179**,
+   luasystem 38, compat53 28, luaposix 17, luasec 17, luv 14. A socket library in the firmware (needed anyway
+   for networking) would unlock more than any other single item. `compat53` is only a shim for Lua < 5.3 and
+   should be declared as a provided no-op package for 5.4.
+4. Not covered yet: older versions of rocks whose latest version is rejected, rules 8-9, and the transitive
+   case where a rock needs a module it does not declare.

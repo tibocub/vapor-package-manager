@@ -49,7 +49,7 @@ Declarative per-board config, like the rest of vaporOS?
 ## Research items
 - **R1** HTTPS/TLS handshake RAM and time on a Pico W (mbedTLS, CA bundle size). Hardware not available yet.
 - **R2** Which NuttX simulator networking mode reaches the host network (TAP vs usrsock) and what it needs.
-- **R3** Real numbers: how many LuaRocks rocks are accepted by the pure-Lua filter, and how many dependency
-  closures are small. Run the filter on the real manifest as the first piece of code (it is a PC script).
+- **R3** (answered 2026-10-27, see pure-lua-filter.md): 1,663 of 4,929 rocks (33.7%) pass, upper bound. Still
+  open: size of typical dependency closures and the effect of rules 8-9.
 - **R4** Does `string.dump(f, true)` plus loading it on the board work with our 64-bit build, and how much RAM
   does it save compared with compiling source on the device?

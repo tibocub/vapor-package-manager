@@ -33,4 +33,6 @@ shadowing (dependency-resolution.md).
   assembled at start, and the conflict cases it removes can already be handled by local copies.
 - Q3: accepted: the **pure-Lua filter and the index builder are the first code**, not a later feature.
 - Prerequisite P1 (shebangs in vaporshell) done.
+- First code written: LuaRocks-compatible versions (`~>` is a prefix match, verified against luarocks) and the
+  filter. Result and findings in pure-lua-filter.md; rule 11 (host-application rocks) added because of it.
 

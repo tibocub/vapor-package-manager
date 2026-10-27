@@ -16,9 +16,11 @@ proposed; recorded in [open-questions.md](open-questions.md).)
 LuaRocks-compatible, so the data from rockspecs needs no translation:
 
 - version = dotted number groups plus an optional `-revision` (`1.13.1-1`), plus `scm`/`dev` for unreleased,
-- constraints: `==`, `~=`, `<`, `<=`, `>`, `>=`, `~>` (pessimistic: `~> 1.2` is `>=1.2, <2`; `~> 1.2.3` is
-  `>=1.2.3, <1.3`), comma separated meaning AND,
-- comparison on the numeric groups, then revision. `scm` sorts last and is never chosen unless asked for.
+- constraints: `==`, `~=`, `<`, `<=`, `>`, `>=`, `~>`, comma separated meaning AND. **`~>` is LuaRocks' prefix
+  match, not Ruby's pessimistic operator**: `~> 1.2` matches `1.2` and `1.2.x` but not `1.3`; `~> 1` matches
+  every `1.x`. (Checked against luarocks/core/vers.lua; `lib/vpm/version.lua` is tested for parity.)
+- comparison on the numeric groups; the revision counts only when both sides have one; `alpha < beta < pre < rc
+  < release < cvs < scm < dev`. `scm`/`dev` are never chosen unless asked for.
 
 ## Inputs to the resolver
 

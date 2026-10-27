@@ -2,6 +2,8 @@
 local plan_ui = require("vpm.plan")
 local fs = require("vpm.fs")
 
+local function is_dir_spec(s) return s:match("^%.%.?/") or s:match("^/") or s:match("^file://") or s == "." or s == ".." end
+
 local function spec(s)
   local name, c = s:match("^([^@]+)@(.+)$")
   if not name then name, c = s, "" end
@@ -20,7 +22,7 @@ local function read_manifest(ctx)
 end
 
 return function(ctx, args)
-  local requests, requested = {}, {}
+  local requests, requested, fresh = {}, {}, {}
   if #args == 0 then
     local m = read_manifest(ctx)
     if not m or not next(m.deps or {}) then
@@ -33,16 +35,29 @@ return function(ctx, args)
     for _, n in ipairs(names) do requests[#requests + 1] = { name = n, constraint = m.deps[n] }; requested[n] = m.deps[n] end
   else
     for _, a in ipairs(args) do
+      if is_dir_spec(a) then
+        local dir = a:gsub("^file://", "")
+        if dir:sub(1, 1) ~= "/" then dir = ctx.cwd .. "/" .. dir:gsub("^%./", "") end
+        local doc, derr = require("vpm.localsrc").load(dir)
+        if not doc then ctx.err("%s", derr); return 1 end
+        ctx.index():add_local(doc)
+        local version = next(doc.versions)
+        requests[#requests + 1] = { name = doc.name, constraint = "== " .. version }
+        requested[doc.name] = ""
+        fresh[doc.name] = true
+        goto continue
+      end
       local r, err = spec(a)
       if not r then ctx.err("%s", err); return 2 end
       requests[#requests + 1] = r
       requested[r.name] = r.constraint
+      ::continue::
     end
   end
 
   local index = ctx.index()
   local plan, err = require("vpm.resolver").resolve{
-    requests = requests, scope = ctx.scope, deps = ctx.flags.deps or ctx.cfg.deps or "auto",
+    requests = requests, fresh = fresh, scope = ctx.scope, deps = ctx.flags.deps or ctx.cfg.deps or "auto",
     provided = ctx.provided(),
     installed = { global = ctx.state("global"):installed_view(), ["local"] = ctx.state("local"):installed_view() },
     index = function(n) return index:resolver_view(n) end,

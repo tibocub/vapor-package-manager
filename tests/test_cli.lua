@@ -117,6 +117,34 @@ code = vpm({ "init", "-y" }, nil, empty)
 assert(code == 0 and has(fs.read(empty .. "/vpm.lua"), 'name = "empty"'))
 assert(select(1, vpm({ "init", "-y" }, nil, empty)) == 1)
 
+-- 12. install ./dir : a package straight from a directory, dependencies from the index
+local src = base .. "/mylib"
+fs.mkdirp(src .. "/sub"); fs.mkdirp(src .. "/tests"); fs.mkdirp(src .. "/lua_modules")
+fs.write(src .. "/vpm.lua", 'return { name = "mylib", version = "0.1.0", deps = { lpeglike = ">= 1.0" }, description = "mine" }')
+fs.write(src .. "/mylib.lua", "return 'v1'"); fs.write(src .. "/sub/part.lua", "return 'part'")
+fs.write(src .. "/tests/t.lua", "skipped"); fs.write(src .. "/lua_modules/dep.lua", "skipped")
+vpm({ "remove", "-g", "lpeglike" })
+code, out = vpm({ "install", "-g", "-y", src })
+assert(code == 0 and fs.read(sys .. "/lib/mylib.lua") == "return 'v1'" and fs.exists(sys .. "/lib/sub/part.lua"), out)
+assert(fs.exists(sys .. "/lib/lpeglike.lua") and not fs.exists(sys .. "/lib/t.lua") and not fs.exists(sys .. "/lib/dep.lua"))
+assert(has(fs.read(sys .. "/lib/.vpm/pkg/mylib.lua"), src))                      -- origin recorded
+fs.write(src .. "/mylib.lua", "return 'v2'")                                     -- edit and reinstall: files are replaced
+code = vpm({ "install", "-g", "-y", src })
+assert(code == 0 and fs.read(sys .. "/lib/mylib.lua") == "return 'v2'")
+code, out = vpm({ "install", "-g", "-n", "../mylib" })                          -- relative paths are resolved against the cwd
+assert(code == 0 and has(out, "mylib"), out)
+assert(code == 0)
+-- a program from a directory gets its launcher
+local app = base .. "/myapp"; fs.mkdirp(app)
+fs.write(app .. "/vpm.lua", 'return { name = "myapp", version = "1.0", kind = "app", bin = { myapp = "main.lua" } }')
+fs.write(app .. "/main.lua", "print('hi')")
+code = vpm({ "install", "-g", "-y", app })
+assert(code == 0 and fs.read(sys .. "/apps/myapp/main.lua") == "print('hi')" and has(fs.read(sys .. "/bin/myapp"), "/apps/myapp/main.lua"))
+-- bad manifests
+fs.mkdirp(base .. "/bad"); fs.write(base .. "/bad/vpm.lua", "return { name = 'x' }")
+code, out, err = vpm({ "install", "-g", base .. "/bad" }); assert(code == 1 and has(err, "version"))
+code, out, err = vpm({ "install", "-g", base .. "/nowhere" }); assert(code == 1 and has(err, "no vpm.lua"))
+
 -- 11. unresolvable and unknown packages exit 3
 code, out, err = vpm({ "install", "-g", "doesnotexist" }); assert(code == 3 and has(err, "not in the index"))
 

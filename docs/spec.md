@@ -136,11 +136,14 @@ Without a terminal and without `-y` it refuses.
 Naming a package that is already installed at a fitting version is a no-op that only updates `world`.
 A package tagged `host` (Neovim/OpenResty/LÖVE) installs normally; the plan prints `note: written for neovim`.
 
-### Local sources
+### Local sources (implemented)
 
 `vpm install ./dir` and `file://` mirrors install without the network. A directory with a `vpm.lua` that has `name` and
 `version` is installed as that package; its dependencies are resolved from the index like any other. This is how
-a program author tests an install, and how an SD-card mirror works.
+a program author tests an install, and how an SD-card mirror works. Without a `files` list in the manifest every
+`.lua` file is installed except `vpm.lua`, `vpm-lock.lua`, `lua_modules/`, `tests/`, `test/`, `spec/` and dot
+directories. A local source is always reinstalled (never "reused"), so edit-and-reinstall works; the record keeps
+the directory as its `origin`.
 
 ### `vpm.lua` (manifest) and `vpm-lock.lua`
 

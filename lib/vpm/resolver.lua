@@ -88,12 +88,13 @@ function M.resolve(o)
 
   local function candidates(name, reqs, global_only, user_named)
     local list = {}
-    if provided[name] and satisfies_all(provided[name], reqs) then
+    local fresh = o.fresh and o.fresh[name]         -- a local source is always (re)installed, never "reused"
+    if provided[name] and not fresh and satisfies_all(provided[name], reqs) then
       list[#list + 1] = { version = provided[name], source = "firmware", scope = "firmware", deps = {} }
     end
     for _, sc in ipairs(global_only and { "global" } or { "local", "global" }) do
       local rec = (installed[sc] or {})[name]
-      if rec and satisfies_all(rec.version, reqs) then
+      if rec and not fresh and satisfies_all(rec.version, reqs) then
         list[#list + 1] = { version = rec.version, source = "installed", scope = sc,
                             deps = parse_deps(rec.deps, true) }
       end

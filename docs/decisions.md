@@ -70,3 +70,12 @@ shadowing (dependency-resolution.md).
 - Not done in the CLI: `vpm install ./dir` (local sources), `search`, `outdated`, `clean`, `adopt`, `--no-register`
   is parsed but only controls registration, impact analysis against registered projects on `upgrade -g`.
 
+
+- `vpm install ./dir` implemented (`localsrc.lua`): the directory becomes an in-memory index entry (file:// URLs,
+  hashes), so the normal resolve/verify/place path installs it; dependencies come from the index.
+- Device packaging written but **not yet verified on the board**: `tools/build-dist.lua` (stripped bytecode in
+  files named .lua, launcher, per-board config in `config/`), `tools/deploy-board.sh`, `tools/vpm-unpack.lua`,
+  `tools/board-test-mirror.lua`. The board uploads failed repeatedly (see the chat of 2026-10-27): a transfer that
+  stalls leaves vaporOS's `recv.lua` waiting for bytes, and every later attempt then fails until the console is
+  recovered. Free-heap measurement during a run is therefore still open.
+

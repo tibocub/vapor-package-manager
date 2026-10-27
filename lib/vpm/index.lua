@@ -11,6 +11,9 @@ function M.new(o)
   return setmetatable({ base = o.base:gsub("/$", ""), transport = o.transport, decode = o.decode, cache = {} }, I)
 end
 
+-- a package that comes from a directory instead of the index (vpm install ./dir)
+function I:add_local(doc) self.cache[doc.name] = doc end
+
 function I:package(name)
   local c = self.cache[name]
   if c ~= nil then return c or nil end

@@ -74,14 +74,18 @@ local function context(parsed, env)
     return line == "" or line == "y" or line == "yes"
   end
   ctx.scope = parsed.flags.global and "global" or "local"
-  ctx.cwd = env.cwd or os.getenv("PWD") or "."
+  local okl, lfs = pcall(require, "lfs")
+  ctx.cwd = env.cwd or (okl and lfs.currentdir()) or os.getenv("PWD") or "."
   ctx.size = size
 
   local cfg = env.config
   if not cfg then
-    local path = parsed.flags.config or os.getenv("VPM_CONFIG") or "/flash/etc/vpm.lua"
-    local f = io.open(path, "rb")
-    if not f then return nil, "no configuration file at " .. path .. " (set VPM_CONFIG or use --config=)" end
+    local path = parsed.flags.config or os.getenv("VPM_CONFIG")
+    local f = path and io.open(path, "rb")
+    for _, p in ipairs(path and {} or { "/flash/etc/vpm.lua", "/etc/vpm.lua" }) do
+      path = p; f = io.open(p, "rb"); if f then break end
+    end
+    if not f then return nil, "no configuration file (looked for " .. tostring(path) .. "; set VPM_CONFIG or use --config=)" end
     local chunk = load(f:read("a"), "=" .. path, "t", {})
     f:close()
     local ok, t = pcall(chunk or error, "bad config")

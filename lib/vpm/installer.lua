@@ -171,7 +171,7 @@ function I:apply(plan, requested)
     end
     local rec = { name = a.name, version = a.version, kind = j.kind, base = j.kind, scope = a.scope,
                   reason = requested[a.name] and "world" or ((old and old.reason) or "dep"),
-                  files = {}, deps = {}, resolved = {}, installed = when }
+                  files = {}, deps = {}, resolved = {}, installed = when, origin = j.meta.origin }
     for _, f in ipairs(j.files) do rec.files[f.dest] = f.sha256 end
     for _, d in ipairs(j.meta.deps or {}) do
       local n, c = split_dep(d)

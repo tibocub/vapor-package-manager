@@ -3,7 +3,7 @@ local plan_ui = require("vpm.plan")
 local version = require("vpm.version")
 
 return function(ctx, args)
-  local installer, index = ctx.installer()
+  local index = ctx.index()
   local st = ctx.state(ctx.scope)
   local world = st:world()
   local names = args
@@ -46,7 +46,8 @@ return function(ctx, args)
     if yes == nil then ctx.err("this needs confirmation and there is no terminal: use -y"); return 1 end
     if not yes then ctx.out("aborted"); return 1 end
   end
-  local ok, aerr, code = installer:apply(plan, requested)
+  ctx.release("vpm.resolver")
+  local ok, aerr, code = ctx.installer():apply(plan, requested)
   if not ok then ctx.err("%s", aerr); return code or 1 end
   ctx.out("upgraded %d package(s)", plan_ui.installs(plan))
   return 0

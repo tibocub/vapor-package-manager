@@ -40,7 +40,7 @@ return function(ctx, args)
     end
   end
 
-  local installer, index = ctx.installer()
+  local index = ctx.index()
   local plan, err = require("vpm.resolver").resolve{
     requests = requests, scope = ctx.scope, deps = ctx.flags.deps or ctx.cfg.deps or "auto",
     provided = ctx.provided(),
@@ -59,7 +59,8 @@ return function(ctx, args)
     if not yes then ctx.out("aborted"); return 1 end
   end
 
-  local ok, aerr, code = installer:apply(plan, requested)
+  ctx.release("vpm.resolver", "vpm.version")          -- not needed while downloading
+  local ok, aerr, code = ctx.installer():apply(plan, requested)
   if not ok then ctx.err("%s", aerr); return code or 1 end
   ctx.out(installs == 0 and "nothing to install, everything is already there" or "installed %d package(s)", installs)
 

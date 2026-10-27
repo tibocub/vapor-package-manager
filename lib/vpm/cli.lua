@@ -53,6 +53,7 @@ end
 
 local function size(n)
   if not n then return "?" end
+  n = math.floor(n)                       -- cjson hands back floats
   if n < 1024 then return n .. " B" end
   return ("%.0f KB"):format(n / 1024)
 end
@@ -92,18 +93,33 @@ local function context(parsed, env)
   cfg.local_root = cfg.local_root or (ctx.cwd .. "/lua_modules")
   ctx.cfg = cfg
 
-  -- lazily built service objects
+  -- Lazily built services; each command loads only what it uses (RAM is the scarce resource, docs/ram-budget.md).
   local built = {}
-  function ctx.installer()
-    if not built.installer then
+  function ctx.index()
+    if not built.index then
       local transport = env.transport or require("vpm.transport")
       local decode = env.decode or (function() local ok, c = pcall(require, "cjson"); return ok and c.decode end)()
       if not decode then error("no JSON decoder available") end
       built.transport = transport
       built.index = require("vpm.index").new{ base = cfg.index or error("no index configured"), transport = transport, decode = decode }
-      built.installer = require("vpm.installer").new{ cfg = cfg, transport = transport, index = built.index, now = env.now }
     end
-    return built.installer, built.index
+    return built.index
+  end
+  function ctx.installer()          -- downloads and places files: load it after resolving, not before
+    if not built.installer then
+      local index = ctx.index()
+      built.installer = require("vpm.installer").new{ cfg = cfg, transport = built.transport, index = index, now = env.now }
+    end
+    return built.installer
+  end
+  function ctx.maintainer()         -- remove, check, repair: no network code
+    if not built.maintainer then built.maintainer = require("vpm.maintain").new{ cfg = cfg, now = env.now } end
+    return built.maintainer
+  end
+  -- unload modules that are no longer needed (the resolver while downloading) and collect
+  function ctx.release(...)
+    for _, n in ipairs{ ... } do package.loaded[n] = nil end
+    collectgarbage()
   end
   function ctx.state(scope)
     return require("vpm.state").open(scope == "global" and cfg.libdir or cfg.local_root)
@@ -111,7 +127,7 @@ local function context(parsed, env)
   function ctx.provided()
     if cfg.provided then return cfg.provided end
     if built.provided == nil then
-      local _, index = ctx.installer()
+      local index = ctx.index()
       local body = built.transport.fetch(index.base .. "/meta.json")
       local ok, meta = pcall(env.decode or require("cjson").decode, body or "{}")
       built.provided = ok and meta.provided or {}

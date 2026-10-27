@@ -95,6 +95,8 @@ assert(code == 1 and has(err, "no terminal") and not fs.exists(proj .. "/lua_mod
 code = vpm({ "install", "-y", "--deps=local", "mathx" })
 assert(code == 0 and fs.exists(proj .. "/lua_modules/mathx.lua") and fs.exists(proj .. "/lua_modules/lpeglike.lua"))
 
+assert(require("vpm.cli").size(1010.0) == "1010 B" and require("vpm.cli").size(2048.0) == "2 KB")
+
 -- 8. info
 code, out = vpm({ "info", "ansicolors" })
 assert(code == 0 and has(out, "ANSI colors") and has(out, "installed: 1.0-1 (global)"))

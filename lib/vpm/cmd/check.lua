@@ -2,7 +2,7 @@
 local fs = require("vpm.fs")
 
 return function(ctx)
-  local installer = ctx.installer()
+  local installer = ctx.maintainer()
   local bad = 0
   for _, scope in ipairs{ "global", "local" } do
     local st = ctx.state(scope)

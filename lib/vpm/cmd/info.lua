@@ -4,7 +4,7 @@ local version = require("vpm.version")
 return function(ctx, args)
   local name = args[1]
   if not name then ctx.err("info about which package?"); return 2 end
-  local _, index = ctx.installer()
+  local index = ctx.index()
   local doc, err = index:package(name)
   if not doc then
     if err then ctx.err("%s", err); return 4 end

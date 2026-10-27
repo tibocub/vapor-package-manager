@@ -64,4 +64,9 @@ shadowing (dependency-resolution.md).
   upgrades keep staging, new records are written directly; `installer:repair` undoes a crashed run. Install of the
   7-package test went from 28.6 s to 13.2 s on the RP2040. Cost: after a crash, a fresh package's partial files
   exist until `repair` runs (vpm refuses to start another run until then).
+- CLI written (`cli.lua`, `plan.lua`, `cmd/*.lua`): one module per command, loaded on demand; the context builds
+  index, installer and maintainer lazily; the resolver is unloaded before downloading. Install code split from
+  maintenance code (`maintain.lua`). Verified on the RP2040 (bytecode, searcher over /flash/vpm_*.luac).
+- Not done in the CLI: `vpm install ./dir` (local sources), `search`, `outdated`, `clean`, `adopt`, `--no-register`
+  is parsed but only controls registration, impact analysis against registered projects on `upgrade -g`.
 

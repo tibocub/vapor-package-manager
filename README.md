@@ -1,7 +1,8 @@
 # vpm: the vaporOS package manager
 
-**Status: design, plus the first code: the version/constraint library (`lib/vpm/version.lua`) and the pure-Lua
-filter with its index builder (`index-builder/`). Run the tests with `tests/run.sh`.** Started 2026-10-27. Everything here is a proposal until it appears in
+**Status: design, plus working code: versions, the pure-Lua filter and index builder, the resolver, the state
+layer, the installer and the command line (`lib/vpm/`, `bin/vpm.lua`); it runs on a host Lua and on the RP2040.
+No HTTP yet (only `file://` mirrors). Run the tests with `tests/run.sh`.** Started 2026-10-27. Everything here is a proposal until it appears in
 [docs/decisions.md](docs/decisions.md).
 
 vpm installs two kinds of things with one tool: **libraries** for your own Lua projects (what npm or luarocks

@@ -2,25 +2,16 @@
 -- (docs/state-and-tracking.md "Safety and crashes"), and the reverse for remove.
 -- Exit-code-like second results: "usage" problems are nil,msg; 3 conflict; 4 network/integrity (nothing changed).
 local fs = require("vpm.fs")
-local State = require("vpm.state")
 local hashmod = require("vpm.hash")
+local Maintain = require("vpm.maintain")
 local M = {}
-local I = {}
+local I = setmetatable({}, { __index = Maintain.class })      -- remove / check / repair / state come from maintain.lua
 I.__index = I
 
 -- cfg = { libdir, appdir, bindir, local_root, reserve?, free_space? }
 function M.new(o)
   return setmetatable({ cfg = o.cfg, transport = o.transport, index = o.index,
                         now = o.now or os.time, states = {} }, I)
-end
-
-function I:state(scope)
-  if not self.states[scope] then
-    local root = scope == "global" and self.cfg.libdir or self.cfg.local_root
-    if not root then return nil, "no " .. scope .. " root configured" end
-    self.states[scope] = State.open(root)
-  end
-  return self.states[scope]
 end
 
 -- Index data is remote: nothing in it may name a path outside its package directory.
@@ -31,36 +22,12 @@ local function safe_rel(p)
 end
 local function safe_name(n) return type(n) == "string" and n:match("^[%w][%w%._%-]*$") ~= nil end
 
-local function base_dir(self, st, kind, name)
-  if kind == "app" then return self.cfg.appdir .. "/" .. name end
-  return st.root
-end
-
 local function split_dep(s) local n, c = s:match("^(%S+)%s*(.*)$"); return n, c end
 
 local function launcher(appdir, name, entry)
   local dir = appdir .. "/" .. name
   return ("#!/bin/lua\npackage.path = %q .. package.path\narg[0] = %q; return dofile(arg[0])\n")
     :format(dir .. "/lua_modules/?.lua;" .. dir .. "/?.lua;", dir .. "/" .. entry)
-end
-
-local function owners(st)
-  local o = {}
-  for _, n in ipairs(st:names()) do
-    local r = st:get(n)
-    if r and r.base ~= "app" then for f in pairs(r.files or {}) do o[f] = n end end
-  end
-  return o
-end
-
-local function remove_files(self, st, rec)
-  local base = base_dir(self, st, rec.kind, rec.name)
-  for f in pairs(rec.files or {}) do
-    fs.remove(base .. "/" .. f)
-    fs.prune((base .. "/" .. f):match("^(.*)/[^/]*$"), rec.kind == "app" and base or st.root)
-  end
-  for _, p in pairs(rec.launchers or {}) do fs.remove(p) end
-  if rec.kind == "app" then fs.prune(base, self.cfg.appdir) end
 end
 
 -- plan: from the resolver. requested: name -> constraint text the user typed (these join the world set)
@@ -104,8 +71,8 @@ function I:apply(plan, requested)
       if not safe_name(a.name) then return fail(1, "unsafe package name: " .. tostring(a.name)) end
       local st = scopes[a.scope]
       local kind = doc.kind == "app" and "app" or "lib"
-      local base = base_dir(self, st, kind, a.name)
-      own_cache[a.scope] = own_cache[a.scope] or owners(st)
+      local base = self:base_dir(st, kind, a.name)
+      own_cache[a.scope] = own_cache[a.scope] or self.owners(st)
       local own = kind == "lib" and own_cache[a.scope] or {}
       local old = st:get(a.name)
       local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old }
@@ -188,7 +155,7 @@ function I:apply(plan, requested)
   for _, a in ipairs(plan.actions) do versions[a.name] = a.version end
   for _, j in ipairs(jobs) do
     local st, a, old = j.st, j.a, j.old
-    if old then remove_files(self, st, old); made = {} end
+    if old then self:remove_files(st, old); made = {} end
     if not j.direct then
       for _, f in ipairs(j.files) do
         local target = j.base .. "/" .. f.dest
@@ -240,72 +207,6 @@ function I:apply(plan, requested)
     st:unlock()
   end
   return true
-end
-
--- Undo a crashed run: files listed in the journal that no complete record owns are removed.
-function I:repair(scope)
-  local st, err = self:state(scope)
-  if not st then return nil, err end
-  local removed = 0
-  for _, e in ipairs(st:journal()) do
-    if not st:get(e.name) and fs.exists(e.path) then
-      fs.remove(e.path); removed = removed + 1
-      local stop = e.path:find(self.cfg.appdir, 1, true) == 1 and self.cfg.appdir or st.root
-      fs.prune(e.path:match("^(.*)/[^/]*$"), stop)
-    end
-  end
-  st:clear_staging()
-  st:unlock()
-  return removed
-end
-
--- Remove packages from a scope. Refuses while another record needs one, unless force.
-function I:remove(names, scope, force)
-  local st, err = self:state(scope)
-  if not st then return nil, err, 1 end
-  local gone = {}
-  for _, n in ipairs(names) do gone[n] = true end
-  for _, n in ipairs(names) do
-    if not st:get(n) then return nil, n .. " is not installed in the " .. scope .. " scope", 1 end
-  end
-  if not force then
-    for _, other in ipairs(st:names()) do
-      if not gone[other] then
-        local r = st:get(other)
-        for dep in pairs(r and r.deps or {}) do
-          if gone[dep] then return nil, ("%s is needed by %s (use --force to remove anyway)"):format(dep, other), 3 end
-        end
-      end
-    end
-  end
-  local ok, lerr = st:lock()
-  if not ok then return nil, lerr, 1 end
-  local world = st:world()
-  for _, n in ipairs(names) do
-    remove_files(self, st, st:get(n))
-    st:delete(n)
-    world[n] = nil
-  end
-  st:set_world(world)
-  st:unlock()
-  return true
-end
-
--- Verify installed files against their recorded hashes. Returns a list of problems.
-function I:check(scope)
-  local st = self:state(scope)
-  local problems = {}
-  for _, n in ipairs(st:names()) do
-    local r = st:get(n)
-    local base = base_dir(self, st, r.kind, n)
-    for f, want in pairs(r.files or {}) do
-      local data = fs.read(base .. "/" .. f)
-      if not data then problems[#problems + 1] = ("%s: missing %s"):format(n, f)
-      elseif hashmod.hex(data) ~= want then problems[#problems + 1] = ("%s: modified %s"):format(n, f) end
-    end
-  end
-  if fs.exists(st.dir .. "/lock") then problems[#problems + 1] = "stale lock file (a previous run did not finish)" end
-  return problems
 end
 
 return M

@@ -95,3 +95,25 @@ resolver before downloading and not loading resolver/index/transport for `remove
 remove/check/repair out of `installer.lua`; (4) make the hash loop allocate less (reuse the schedule table, no
 string concatenation per chunk). A non-default GC mode is not a fix: it buys speed with 20-40 KB of peak.
 
+### The CLI on the RP2040 (2026-10-27, `lua clirun.lua`, bytecode, default GC)
+
+Every command runs in a fresh state (all `vpm.*` modules unloaded first, to mimic a new process) against the
+7-package `file://` mirror. "Heap before" is 51 KB because the measuring script itself holds ~24 KB (the mirror
+builder, cjson), so read the *increase*, which is what the command costs.
+
+| command | time | heap peak increase | modules loaded |
+|---|---|---|---|
+| `list -g` (empty / 7 records) | 0.6 s / 3.4 s | +27 / +28 KB | 4 |
+| `why a` | 1.9 s | +29 KB | 4 |
+| `info g` | 1.2 s | +38 KB | 7 |
+| `check` (rehash 11 KB) | 5.2 s | +36 KB | 6 |
+| `remove` 7 packages | 6.7 s | +32 KB | 5 |
+| `install -g -y g` (7 packages, resolve + download + place) | 16.6 s | **+74 KB** | 10 |
+
+Compared with the earlier all-in-one run (+88 KB over baseline at the peak), install needs about 14 KB less now
+that the resolver is unloaded before downloading and `remove`/`check` code lives in `maintain.lua`. The
+maintenance and read-only commands never load the resolver, index client, transport or installer
+(`tests/test_lazy.lua` enforces this). Loaded bytecode for all 20 modules is 44 KB on disk.
+
+Not yet done from the list above: the slim-index split (proposal 2) and the hash-loop allocations (4).
+

@@ -13,12 +13,12 @@ return function(ctx, args)
       local o = st:get(n)
       if o and o.deps and o.deps[name] ~= nil then
         found = found + 1
-        ctx.out("  %-20s %-12s (%s, %s)   needs %s %s", o.name, o.version, o.kind == "app" and "program" or "library",
-          label, name, o.deps[name])
+        ctx.out("  %-20s %-12s (%s, %s)   needs %s", o.name, o.version, o.kind == "app" and "program" or "library",
+          label, (name .. " " .. o.deps[name]):gsub("%s+$", ""))
       end
     end
   end
-  local prov = ctx.cfg.provided or ctx.provided()
+  local prov = ctx.cfg.provided or {}          -- purely local: never touches the network
   if prov[name] then ctx.out("%s %s is provided by the firmware", name, prov[name]) end
   if ctx.cfg.libdir then scan(ctx.state("global"), "global") end
   if ctx.cwd ~= nil then scan(ctx.state("local"), "this project") end

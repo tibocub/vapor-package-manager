@@ -25,8 +25,8 @@ For each rockspec of each version, evaluated in an empty sandboxed environment:
 | 5 | `build.platforms` / `build_dependencies` do not introduce native pieces | same |
 | 6 | the `lua` dependency constraint admits 5.4 (e.g. `lua >= 5.1`, `lua ~> 5.4`) | the runtime is 5.4 |
 | 7 | every other dependency is itself accepted, **or provided by the firmware** at a fitting version | transitive purity; this is why the index builder needs the provided list |
-| 8 | the source archive, once fetched, contains no `.c`, `.cpp`, `.h`, `.so`, `.dll` outside `doc/`, `test/`, `examples/` | catches `builtin` rocks whose `modules` omit native code, and `none` rocks that ship binaries |
-| 9 | the rock does not reference `ffi`, `jit.` (LuaJIT-only) in its modules | cheap grep; LuaJIT-only code cannot run on PUC Lua |
+| 8 | **what the rock installs** (computed from `build.modules`, `install.lua`, `install.bin`, or LuaRocks' `src`/`lua`/`lib` auto-detection) is all `.lua`: no `.c` file in the auto-detected directories, every file exists, is a regular non-symlink file, is under 1 MB and **parses as Lua 5.4** | what is installed is what matters: a stray `.c` file elsewhere in the repository is never built or installed (my first draft wrongly scanned the whole tree) |
+| 9 | `require` calls in installed files are scanned: modules that are neither the rock's own, the standard library, the firmware's, nor provided by its dependency closure are recorded as `undeclared_requires`; `ffi`/`jit` use sets `luajit` | a **warning**, not a rejection: many are optional (`pcall(require, ...)`) |
 | 10 | the source is fetchable without a build step (git tag, tarball or zip with a stable URL) | needed to compute hashes |
 | 11 | the rock is not written for a host application (Neovim, OpenResty/Kong, LÖVE, game engines): detected from its name, `description.labels` and dependencies | pure Lua, but needs an API vaporOS does not have; **found necessary by the first run** (see below) |
 
@@ -91,3 +91,39 @@ What this told us:
    should be declared as a provided no-op package for 5.4.
 4. Not covered yet: older versions of rocks whose latest version is rejected, rules 8-9, and the transitive
    case where a rock needs a module it does not declare.
+
+## Source stage (implemented 2026-10-27)
+
+`lua index-builder/build.lua one NAME VERSION SPECS WORK RECORDS` fetches one rock safely (git over https only
+with `--depth 1` and the rock's tag, or an https archive with a size cap; `file://` and ssh sources are refused;
+extraction is confined to a scratch directory), works out the installed files and hashes them
+(`sha256sum`), checks them (rule 8-9) and writes a record. `build.lua todo` lists rocks without a record,
+`build.lua emit` re-applies the dependency closure (a rock rejected at the source stage also removes its
+dependents) and writes `index/v1/` (see [index-and-network.md](index-and-network.md)). About 8 rocks per second
+with 8 parallel jobs; the full set (2,605 rocks) took about 6 minutes plus 5.5 for the rockspecs.
+
+Result (latest release of each rock, 2026-10-27):
+
+| outcome | rocks |
+|---|---|
+| **in the index** | **1,939** (39.3% of 4,929), of which 776 tagged for a host application (Neovim/OpenResty/LÖVE) |
+| rejected at the rockspec stage (native, build type, external libs...) | ~2,000 |
+| rejected at the source stage: download failed (dead repo, timeout) | 154 |
+| source URL not usable (`file://` paths on someone's disk, ssh) | 152 |
+| `source.tag` does not exist in the repository | 133 |
+| native source found by auto-detection | 5 more (437 in total) |
+| installed files do not parse as Lua 5.4 (written for 5.1 syntax) | 23 |
+| rejected because a dependency was rejected | 909 |
+
+The index holds 15,747 files in 1,939 package files, 11 MB of JSON in total (a device reads only the few
+small files of the packages it resolves). 14,413 files have a stable GitHub raw URL pinned to a commit or tag;
+**169 packages have no downloadable file URL** (archives on private hosts such as dkjson or luaunit, and forges
+whose raw-URL pattern is not mapped yet: framagit, codeberg, sr.ht, plus GitHub release downloads). Those need
+either more URL rules (about 40 packages) or a mirror (question Q8).
+
+`undeclared_requires` is set on 744 packages. Most are host modules (kong, resty, telescope: already tagged).
+The rest are real: `bit` (88 rocks; Lua 5.4 has no `bit` library, it is `bit32`-less) and `socket` (41, plus
+`socket.url` 24: rocks that need luasocket without saying so), `inspect`, `logger`.
+
+Known gaps: only the latest version of each rock is indexed; the record keeps no per-file source path, so raw
+URL rules cannot be changed without re-fetching; no `luac` bytecode, no signatures.

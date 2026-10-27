@@ -12,6 +12,8 @@ so they can be built before vpm exists. Order is roughly the order they unblock 
 | P5 | **Directory and file primitives vpm relies on**: atomic rename, mkdir -p, recursive remove, file size, free space (`statfs`) | stage-then-rename install, space check | already mostly in lfs/os; `statfs` and `rename` semantics on littlefs and hostfs to be verified | partly verified |
 | P6 | **`luac`-equivalent on the device** (`string.dump(load(src), true)`) for bytecode install | smaller/faster installs | already in the Lua standard library; verify stripping works with our build | easy |
 | P7 | **A "provided libraries" table** the runtime exposes: name, version, rock name | the resolver must know lfs/lpeg/cjson and their versions | vlua: `package.loaded`/`vapor.provided`, generated at build time | not started |
+| P9 | **A `compat53` stub**: `package.preload.compat53 = function() return true end` in the runtime | 28+ rocks list compat53 as a dependency; it does nothing on Lua >= 5.3 | vlua | not started, trivial |
+| P10 | **A socket library** (luasocket-compatible subset: `socket`, `socket.url`, `socket.http`...) | blocks 179 rocks, and vpm itself needs HTTP | firmware (vlua) | not started; see index-and-network.md |
 | P8 | **Wall-clock time** (`os.time`) correct enough for records | install dates, cache freshness | works; RTC absent on RP2040 so dates are not real until set | note |
 
 ## Bash/Lua parity

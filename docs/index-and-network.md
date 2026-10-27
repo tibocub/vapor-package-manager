@@ -25,16 +25,22 @@ index/v1/
   search/…                      small prefix files for `vpm search` (optional; may be absent on the RP2040)
 ```
 
-A package file (JSON, decoded with the firmware's cjson, because remote data must never be `load`ed as code):
+A package file (JSON, decoded with the firmware's cjson, because remote data must never be `load`ed as code).
+**This is the format `index-builder/build.lua emit` writes today** (`deps` are the rockspec strings, `lua` is the
+constraint on Lua itself; `host` and `undeclared_requires` are present only when set):
 
 ```json
 { "name": "argparse", "kind": "lib",
   "versions": {
-    "0.7.1-1": {
-      "lua": ">=5.1",
-      "deps": { "penlight": ">=1.10" },
-      "files": { "argparse.lua": { "sha256": "…", "size": 41230, "url": "https://…/argparse.lua" } },
-      "bin": {}
+    "0.7.2-1": {
+      "lua": ">= 5.1",
+      "deps": [],
+      "modules": ["argparse"],
+      "files": { "argparse.lua": { "sha256": "…", "size": 78125,
+                                   "url": "https://raw.githubusercontent.com/…/<commit-or-tag>/src/argparse.lua" } },
+      "bin": {},
+      "origin": { "type": "archive", "url": "https://github.com/…/archive/….tar.gz", "sha256": "…" },
+      "summary": "…", "license": "MIT", "homepage": "…"
     } } }
 ```
 

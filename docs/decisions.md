@@ -35,4 +35,9 @@ shadowing (dependency-resolution.md).
 - Prerequisite P1 (shebangs in vaporshell) done.
 - First code written: LuaRocks-compatible versions (`~>` is a prefix match, verified against luarocks) and the
   filter. Result and findings in pure-lua-filter.md; rule 11 (host-application rocks) added because of it.
+- Host-application rocks (Neovim, OpenResty, LÖVE) are **tagged, not rejected** (user, 2026-10-27): users are not
+  expected to install them by mistake, the tag is for search/info. Pure-Lua rules stay hard rejections.
+- `compat53` is a no-op on Lua >= 5.3, so it is a provided stub (the runtime must preload an empty module).
+- Rule 8 corrected: check what a rock *installs*, not everything in its repository.
+- Source stage and `index/v1` emission implemented; first full run: 1,939 packages.
 

@@ -36,15 +36,20 @@ rejects(spec('build={install={lib={demo="demo.so"}}}'), "install-lib")
 rejects(spec('dependencies={"lua >= 5.1, < 5.4"}'), "lua-version")
 rejects(spec('dependencies={"lua ~> 5.1"}'), "lua-version")                       -- LuaRocks prefix match: 5.1.x only
 rejects('package="demo"\nversion="1"\n', "no-source-url")
-rejects(spec('description={labels={"neovim"}}'), "host-api:nvim")
-rejects(spec('dependencies={"lua-resty-http"}'), "host-api:openresty")
-rejects('package="x.nvim"\nversion="1"\nsource={url="u"}\n', "host-api:nvim")
+-- host-application rocks are accepted but tagged
+local function host(text) local rs = assert(sandbox.load(text, "t")); local ok, _, info = filter.check(rs); assert(ok); return info.host end
+assert(host(spec('description={labels={"neovim"}}')) == "nvim")
+assert(host(spec('dependencies={"lua-resty-http"}')) == "openresty")
+assert(host('package="x.nvim"\nversion="1"\nsource={url="u"}\n') == "nvim")
+assert(host(spec('')) == nil)
+-- compat53 is a provided stub on 5.4
+accepts(spec('dependencies={"compat53 >= 0.3"}'))
 
 -- closure: dependencies on rejected rocks, provided libraries and their versions
 local function chk(text) local rs = assert(sandbox.load(text, "t")); local ok, r, info = filter.check(rs)
   return ok and { ok = true, deps = info.deps } or { ok = false, reason = r } end
 local set = {
-  good   = chk(spec('dependencies={"lpeg >= 0.12"}')),
+  good   = chk(spec('dependencies={"lpeg >= 0.12", "compat53"}')),
   needsgood = chk(spec('dependencies={"good"}')),
   native = chk(spec('build={type="make"}')),
   needsnative = chk(spec('dependencies={"native"}')),

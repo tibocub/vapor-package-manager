@@ -15,25 +15,9 @@ if cmd == "list" then
   return
 end
 
-local checked, bad = {}, { read = 0, eval = 0 }
+local _, checked, stats = require("evaluate")(repo, dir)
+local bad = { read = stats.missing, eval = stats.eval }
 local evalerr = {}
-for _, name in ipairs(names) do
-  local ver = manifest.latest(repo[name])
-  local f = io.open(("%s/%s-%s.rockspec"):format(dir, name, ver), "rb")
-  if not f then
-    bad.read = bad.read + 1
-  else
-    local text = f:read("a"); f:close()
-    local rs, err = sandbox.load(text, name)
-    if not rs then
-      bad.eval = bad.eval + 1; evalerr[#evalerr + 1] = name .. ": " .. tostring(err)
-      checked[name] = { ok = false, reason = "rockspec-error" }
-    else
-      local ok, reason, info = filter.check(rs)
-      checked[name] = ok and { ok = true, deps = info.deps, version = ver } or { ok = false, reason = reason }
-    end
-  end
-end
 
 local status, root = filter.closure(checked)
 local acc, reasons = {}, {}
@@ -42,7 +26,6 @@ for name, st in pairs(status) do
   else
     local key = tostring(st)
     if st == "dep" then key = "dep (root cause: " .. tostring(root[name].reason):gsub(":.*", "") .. ")" end
-    if key:find("^host%-api") then key = "host-api" end
     reasons[key] = (reasons[key] or 0) + 1
   end
 end
@@ -50,7 +33,10 @@ table.sort(acc)
 
 local total = #names
 print(("rocks: %d   rockspec missing: %d   rockspec failed to evaluate: %d"):format(total, bad.read, bad.eval))
+local tagged = {}
+for _, n in ipairs(acc) do local h = checked[n].host; if h then tagged[h] = (tagged[h] or 0) + 1 end end
 print(("ACCEPTED (pure Lua, closure ok): %d  (%.1f%%)"):format(#acc, 100 * #acc / total))
+for h, n in pairs(tagged) do print(("   of which tagged host=%s: %d"):format(h, n)) end
 local rl = {}
 for k, n in pairs(reasons) do rl[#rl + 1] = { k, n } end
 table.sort(rl, function(a, b) return a[2] > b[2] end)

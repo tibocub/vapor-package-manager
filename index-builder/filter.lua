@@ -9,6 +9,11 @@ local M = {}
 -- Libraries the firmware links in (rock name -> version). Keep in sync with vaporOS features/lua-libs.conf.
 M.provided = { luafilesystem = "1.9.0", lpeg = "1.1.0", ["lua-cjson"] = "2.1.0" }
 
+-- Packages that are only a stub on Lua 5.4: compat53 backports 5.3 features to 5.1/5.2 (its init.lua does nothing
+-- on >= 5.3; the rock builds C modules only for those old versions). The runtime must preload an empty module.
+M.provided.compat53 = "0.15.1"
+M.stub = { compat53 = true }
+
 local LUA = V.parse("5.4")
 
 local function lua_ok(constraints)
@@ -32,8 +37,9 @@ local function native_in(v)
   return false
 end
 
--- Rule 11: code written for a host application (an editor, a game engine, a web server) is pure Lua but needs
--- that application's API, which vaporOS does not have. Detected from name, labels and dependencies.
+-- Rule 11 (a TAG, not a rejection): code written for a host application (an editor, a game engine, a web
+-- server) is pure Lua but needs that application's API, which vaporOS does not have. Detected from name,
+-- labels and dependencies. The index records it as `host`; search/info show it, nothing is hidden by the builder.
 local HOST = {
   { "nvim",      names = { "%.nvim$", "^nvim%-", "^neovim", "^telescope", "^lua%-language%-server" },
                  labels = { "neovim", "nvim" }, deps = { "^nvim", "^plenary" } },
@@ -86,9 +92,7 @@ function M.check(rs)
       deps[#deps + 1] = d
     end
   end
-  local host = host_api(rs, deps)
-  if host then return false, "host-api:" .. host end
-  return true, nil, { deps = deps }
+  return true, nil, { deps = deps, host = host_api(rs, deps) }
 end
 
 -- checked: name -> { ok, reason, deps }. Returns status, root:

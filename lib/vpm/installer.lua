@@ -18,7 +18,6 @@ function I:state(scope)
   if not self.states[scope] then
     local root = scope == "global" and self.cfg.libdir or self.cfg.local_root
     if not root then return nil, "no " .. scope .. " root configured" end
-    fs.mkdirp(root)
     self.states[scope] = State.open(root)
   end
   return self.states[scope]

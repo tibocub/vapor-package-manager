@@ -6,25 +6,7 @@ local resolver, json, decode = require("vpm.resolver"), require("json"), require
 local base = os.tmpname(); os.remove(base); assert(fs.mkdirp(base))
 local mirror, sysroot = base .. "/mirror", base .. "/sys"
 
--- build a file:// mirror: packages = { name = { kind=, versions = { v = { files = {dest=content}, deps = {}, bin = {} } } } }
-local function publish(packages)
-  for name, p in pairs(packages) do
-    local doc = { name = name, kind = p.kind or "lib", versions = {} }
-    for v, m in pairs(p.versions) do
-      local files, size = {}, 0
-      for dest, content in pairs(m.files) do
-        local path = mirror .. "/src/" .. name .. "-" .. v .. "/" .. dest
-        assert(fs.mkdirp(path:match("^(.*)/[^/]*$"))); assert(fs.write(path, content))
-        files[dest] = { sha256 = m.badhash and string.rep("0", 64) or hash.hex(content), size = #content, url = "file://" .. path }
-        size = size + #content
-      end
-      doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size }
-    end
-    local shard = name:sub(1, 2):lower()
-    assert(fs.mkdirp(mirror .. "/index/v1/p/" .. shard))
-    assert(fs.write(mirror .. "/index/v1/p/" .. shard .. "/" .. name .. ".json", json.encode(doc)))
-  end
-end
+local publish = require("mirror").new(mirror)
 
 publish{
   lpeglike = { versions = { ["1.0-1"] = { files = { ["lpeglike.lua"] = "return 'lpeglike'" } } } },

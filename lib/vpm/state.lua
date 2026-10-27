@@ -43,16 +43,16 @@ local function write_atomic(path, data)
   return fs.rename(tmp, path)
 end
 
+-- Opening never writes: read-only commands must not create directories. lock() creates them.
 function M.open(root)
-  local s = setmetatable({ root = root, dir = root .. "/.vpm" }, S)
-  fs.mkdirp(s.dir .. "/pkg")
-  return s
+  return setmetatable({ root = root, dir = root .. "/.vpm" }, S)
 end
 
 function S:get(name) return load_table(("%s/pkg/%s.lua"):format(self.dir, name)) end
 
 function S:names()
   local t = {}
+  if not fs.isdir(self.dir .. "/pkg") then return t end
   for _, f in ipairs(fs.list(self.dir .. "/pkg")) do
     local n = f:match("^(.*)%.lua$")
     if n then t[#t + 1] = n end
@@ -80,6 +80,8 @@ end
 function S:delete(name) return fs.remove(("%s/pkg/%s.lua"):format(self.dir, name)) end
 
 function S:world() return load_table(self.dir .. "/world.lua") or {} end
+function S:projects() return load_table(self.dir .. "/projects.lua") or {} end
+function S:set_projects(t) fs.mkdirp(self.dir); return write_atomic(self.dir .. "/projects.lua", M.serialise(t)) end
 function S:set_world(w) return write_atomic(self.dir .. "/world.lua", M.serialise(w)) end
 
 function S:staging(name) return self.dir .. "/staging/" .. (name or "") end
@@ -89,6 +91,8 @@ function S:clear_staging() fs.rmtree(self.dir .. "/staging") end
 -- place (not through staging), so a crashed run can be undone (installer :repair).
 function S:lock(journal)
   local p = self.dir .. "/lock"
+  local made, merr = fs.mkdirp(self.dir .. "/pkg")
+  if not made then return nil, merr end
   if fs.exists(p) then return nil, "another vpm run is active or crashed (see 'vpm check'): " .. p end
   return fs.write(p, journal or tostring(os.time()))
 end

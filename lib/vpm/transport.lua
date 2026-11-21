@@ -20,6 +20,15 @@ function M.get(url, sink)
     return 200
   end
   if url:match("^https?://") then
+    if not M.connect and not package.loaded["vsock"] then -- on vlr: the runtime's own client (redirects, chunked, TLS verified)
+      local ok, std = pcall(require, "std.http")
+      if ok then
+        local r, err = std.get(url, {sink = sink, cafile = M.cafile})
+        if not r then return 502, err end
+        if r.status ~= 200 then return r.status, r.reason end
+        return 200
+      end
+    end
     local http = require("vpm.http")
     http.cafile = M.cafile
     return http.get(url, sink, M.connect or http.vsock_connect)

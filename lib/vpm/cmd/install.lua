@@ -63,7 +63,12 @@ return function(ctx, args)
     index = function(n) return index:resolver_view(n) end,
   }
   if index.failed then ctx.err("%s", index.failed); return 4 end -- integrity and network failures are never "unresolvable"
-  if not plan then ctx.err("%s", err); return 3 end
+  if not plan then
+    for name, host in pairs(index.hidden or {}) do
+      ctx.err("%s is written for %s and is not offered here (add hosts = { \"%s\" } to the vpm config if this runtime provides it)", name, host, host)
+    end
+    ctx.err("%s", err); return 3
+  end
 
   local installs = plan_ui.installs(plan)
   plan_ui.show(ctx, plan)

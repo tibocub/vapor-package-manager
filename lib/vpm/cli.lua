@@ -112,7 +112,7 @@ local function context(parsed, env)
         keys[i] = (hex:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end))
       end
       built.index = require("vpm.index").new{ base = cfg.index or error("no index configured"), transport = transport, decode = decode,
-        keys = keys, verify = env.verify, serial_file = keys and (cfg.libdir .. "/.vpm/index-serial") }
+        keys = keys, verify = env.verify, serial_file = keys and (cfg.libdir .. "/.vpm/index-serial"), hosts = cfg.hosts }
     end
     return built.index
   end

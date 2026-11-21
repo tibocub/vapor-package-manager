@@ -104,8 +104,19 @@ if cmd == "emit" then
       for _, m in ipairs(r.requires) do
         if not known[m] and not known[m:match("^[^.]+")] and not firmware[m] and not firmware[m:match("^[^.]+")] then warn[#warn + 1] = m end
       end
+      -- the host this rock needs, from the filter's tag or from what its code requires: vpm hides tagged packages unless the config allows that host
+      local host = r.host
+      if not host and r.luajit then host = "luajit" end
+      if not host then
+        local HOSTS = { ngx = "openresty", resty = "openresty", kong = "openresty", vim = "nvim", nvim = "nvim", plenary = "nvim", awful = "awesome", gears = "awesome",
+                        wibox = "awesome", naughty = "awesome", beautiful = "awesome", love = "love" }
+        for _, m in ipairs(r.requires) do
+          local h = HOSTS[m:match("^[^.]+")]
+          if h then host = h; break end
+        end
+      end
       local ver = {
-        lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = r.host,
+        lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = host,
         undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }
@@ -120,7 +131,7 @@ if cmd == "emit" then
       write(("%s/index/v1/p/%s/%s.json"):format(out, shard, name),
             json.encode({ name = name, kind = kind, versions = { [r.version] = ver } }) .. "\n")
       n = n + 1
-      if r.host then hostn = hostn + 1 end
+      if host then hostn = hostn + 1 end
     end
   end
   write(out .. "/index/v1/meta.json", json.encode({

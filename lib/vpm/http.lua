@@ -113,7 +113,30 @@ end
 
 -- connect function over vsock / vtls. M.cafile (the config's `cafile`) is the PEM bundle https servers are verified
 -- against; there is no way to skip verification.
+-- on vlr (vapor.net) a plain connection comes from there, wrapped into the { send, recv(max, timeout), close } shape vsock has
+local function vapor_connect(host, port)
+  local ok, net = pcall(require, "vapor.net")
+  if not ok then return nil end
+  local s, err = net.connect(host, port)
+  if not s then return nil, err or "connect failed" end
+  return {
+    send = function(_, data) local w, e = s:write(data); if w then return true end return nil, e end,
+    recv = function(_, max, timeout)
+      s:settimeout(timeout)
+      local d, e = s:readsome(max)
+      if d then return d end
+      if e == "eof" then return "" end -- vsock: "" at end of stream
+      return nil, e
+    end,
+    close = function() s:close() end,
+  }
+end
+
 function M.vsock_connect(scheme, host, port)
+  if scheme == "http" and not package.loaded["vsock"] then
+    local c, err = vapor_connect(host, port)
+    if c or err then return c, err end
+  end
   if scheme == "https" then
     if not M.cafile then return nil, "https needs `cafile` (a PEM bundle of trusted roots) in the vpm config" end
     local ok, vtls = pcall(require, "vtls")

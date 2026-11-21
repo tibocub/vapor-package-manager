@@ -22,7 +22,11 @@ function I:fetch(path)
   if not body or not self.keys then return body, status, err end
   local sig = self.transport.fetch(url .. ".sig")
   if not sig or #sig ~= 64 then return nil, 495, "no valid signature for " .. path end
-  local verify = self.verify or require("vsign").verify
+  local verify = self.verify
+  if not verify then
+    local ok, mod = pcall(require, "vapor.sign") -- vlr's name; vlua called it vsign
+    verify = (ok and mod or require("vsign")).verify
+  end
   for _, key in ipairs(self.keys) do
     if verify(sig, body, key) then return body end
   end

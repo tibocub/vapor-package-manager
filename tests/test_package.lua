@@ -46,7 +46,7 @@ bad({ ["a.lua"] = "return (" }, 'build={modules={a="a.lua"}}', "syntax-5.4")
 bad({ ["a.lua"] = "return 1" }, 'build={modules={a="gone.lua"}}', "missing-file")
 bad({}, 'build={modules={a="../../etc/x.lua"}}', "unsafe-path")
 bad({ ["a.so"] = "x" }, 'build={modules={a="a.so"}}', "native-source")
-bad({ ["a.lua"] = ("x"):rep(1100000) }, 'build={modules={a="a.lua"}}', "file-too-large")
+bad({ ["a.lua"] = ("x"):rep(520000) }, 'build={modules={a="a.lua"}}', "file-too-large")
 
 -- json: sorted keys, escapes, arrays
 assert(json.encode({ b = 1, a = { "x", "y\n" } }):gsub("%s", "") == '{"a":["x","y\\n"],"b":1}')

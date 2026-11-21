@@ -7,7 +7,7 @@ local q, run = source.q, source.run
 
 local M = {}
 
-local MAX_FILE = 1000000   -- bytes; a Lua library file bigger than this is not for a 187 KB device
+local MAX_FILE = tonumber(os.getenv and os.getenv("VLR_MAX_FILE")) or 512000   -- bytes per file (env VLR_MAX_FILE); bigger is data, not a library for a 187 KB device, and the index host mirrors blobs
 
 local STDLIB = { string = 1, table = 1, math = 1, os = 1, io = 1, coroutine = 1, utf8 = 1, debug = 1,
                  package = 1, bit32 = 1, jit = 1, ffi = 1 }

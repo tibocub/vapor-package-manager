@@ -37,6 +37,7 @@ return function(ctx, args)
     installed = { global = ctx.state("global"):installed_view(), ["local"] = ctx.state("local"):installed_view() },
     index = function(n) return index:resolver_view(n) end,
   }
+  if index.failed then ctx.err("%s", index.failed); return 4 end -- integrity and network failures are never "unresolvable"
   if not plan then ctx.err("%s", err); return 3 end
   plan_ui.show(ctx, plan)
   if ctx.flags.dry_run then return 0 end

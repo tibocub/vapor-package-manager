@@ -47,6 +47,12 @@ assert(not doc and err:match("bad signature"), err)
 doc, err = new(signed(KEY, true), { KEY }):package("foo")
 assert(not doc and err:match("bad signature"), err)
 
+-- a failed signature is remembered so commands can report it (exit 4) instead of "not in the index"; a plain miss is not a failure
+local badix = new(signed(KEY, true), { KEY })
+assert(badix:resolver_view("foo") == nil and badix.failed and badix.failed:match("bad signature"), tostring(badix.failed))
+local okix = new(signed(KEY), { KEY })
+assert(okix:resolver_view("nope") == nil and okix.failed == nil, "a missing package is not an integrity failure")
+
 -- missing signature
 local f = signed(KEY); f["p/fo/foo.json.sig"] = nil
 doc, err = new(f, { KEY }):package("foo")

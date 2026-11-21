@@ -64,15 +64,22 @@ function I:package(name)
   if c ~= nil then return c or nil end
   if self.keys then
     local _, mstatus, merr = self:meta()          -- the signed meta (and its serial) is checked before any package
-    if self.meta_doc == nil then return nil, merr or ("index error " .. tostring(mstatus)) end
+    if self.meta_doc == nil then
+      self.failed = self.failed or merr or ("index error " .. tostring(mstatus))
+      return nil, merr or ("index error " .. tostring(mstatus))
+    end
   end
   local body, status, err = self:fetch(("p/%s/%s.json"):format(shard(name), name))
   if not body then
     if status == 404 then self.cache[name] = false; return nil end
+    self.failed = self.failed or err or ("index error " .. tostring(status)) -- a signature or network failure is not "not in the index": commands report it and exit 4
     return nil, err or ("index error " .. tostring(status))
   end
   local ok, doc = pcall(self.decode, body)
-  if not ok or type(doc) ~= "table" or doc.name ~= name then return nil, "bad index data for " .. name end
+  if not ok or type(doc) ~= "table" or doc.name ~= name then
+    self.failed = self.failed or ("bad index data for " .. name)
+    return nil, "bad index data for " .. name
+  end
   self.cache[name] = doc
   return doc
 end

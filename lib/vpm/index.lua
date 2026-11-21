@@ -24,8 +24,7 @@ function I:fetch(path)
   if not sig or #sig ~= 64 then return nil, 495, "no valid signature for " .. path end
   local verify = self.verify
   if not verify then
-    local ok, mod = pcall(require, "vapor.sign") -- vlr's name; vlua called it vsign
-    verify = (ok and mod or require("vsign")).verify
+    verify = require("vapor.sign").verify
   end
   for _, key in ipairs(self.keys) do
     if verify(sig, body, key) then return body end

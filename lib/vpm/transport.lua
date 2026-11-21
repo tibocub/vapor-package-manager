@@ -1,6 +1,5 @@
 -- Transports: get(url, sink) streams the body to sink(chunk) and returns an HTTP-like status (200, 404...).
--- file:// is the offline path (an SD card, a mirror directory, tests). http:// goes through vpm.http over vsock;
--- https:// answers 502 until a TLS connection exists (docs/vaporos-prerequisites.md P4). M.connect can be replaced (tests).
+-- file:// is the offline path (an SD card, a mirror directory, tests). http(s):// goes through vlr's std.http (needs the vapor.net/vapor.tls/std.http modules).
 local fs = require("vpm.fs")
 local M = {}
 
@@ -19,19 +18,13 @@ function M.get(url, sink)
     f:close()
     return 200
   end
-  if url:match("^https?://") then
-    if not M.connect and not package.loaded["vsock"] then -- on vlr: the runtime's own client (redirects, chunked, TLS verified)
-      local ok, std = pcall(require, "std.http")
-      if ok then
-        local r, err = std.get(url, {sink = sink, cafile = M.cafile})
-        if not r then return 502, err end
-        if r.status ~= 200 then return r.status, r.reason end
-        return 200
-      end
-    end
-    local http = require("vpm.http")
-    http.cafile = M.cafile
-    return http.get(url, sink, M.connect or http.vsock_connect)
+  if url:match("^https?://") then -- vlr's own client: redirects, chunked bodies, TLS with the chain and host name always verified
+    local ok, std = pcall(require, "std.http")
+    if not ok then return 502, "this runtime has no std.http" end
+    local r, err = std.get(url, {sink = sink, cafile = M.cafile})
+    if not r then return 502, err end
+    if r.status ~= 200 then return r.status, r.reason end
+    return 200
   end
   return 400, "unsupported URL: " .. url
 end

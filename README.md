@@ -2,7 +2,7 @@
 
 **Status: design, plus working code: versions, the pure-Lua filter and index builder, the resolver, the state
 layer, the installer and the command line (`lib/vpm/`, `bin/vpm.lua`); it runs on a host Lua and on the RP2040.
-No HTTP yet (only `file://` mirrors). Run the tests with `tests/run.sh`.** Started 2026-10-27. Everything here is a proposal until it appears in
+HTTP(S) downloads and signed indexes work through vlr's `std.http`/`vapor.tls`/`vapor.sign`: vpm now runs on vlr only (vlua is gone). Run the tests with `tests/run.sh` (needs `vlr` on PATH or `VLR=...`); run vpm itself with `vlr /path/to/vpm <command>` (the folder has a manifest).** Started 2026-10-27. Everything here is a proposal until it appears in
 [docs/decisions.md](docs/decisions.md).
 
 vpm installs two kinds of things with one tool: **libraries** for your own Lua projects (what npm or luarocks

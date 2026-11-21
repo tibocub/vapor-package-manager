@@ -104,7 +104,7 @@ local function context(parsed, env)
       local transport = env.transport or require("vpm.transport")
       local decode = env.decode or (function() local ok, c = pcall(require, "cjson"); return ok and c.decode end)()
       if not decode then error("no JSON decoder available") end
-      transport.cafile = cfg.cafile               -- trusted roots for https (the module only loads vpm.http when it needs it)
+      transport.cafile = cfg.cafile               -- trusted roots for https
       built.transport = transport
       local keys
       for i, hex in ipairs(cfg.keys or {}) do

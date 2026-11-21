@@ -11,7 +11,36 @@ I.__index = I
 -- cfg = { libdir, appdir, bindir, local_root, reserve?, free_space? }
 function M.new(o)
   return setmetatable({ cfg = o.cfg, transport = o.transport, index = o.index,
-                        now = o.now or os.time, states = {} }, I)
+                        now = o.now or os.time, states = {},
+                        sleep = o.sleep or (vapor and vapor.sleep) or function() end,  -- backoff between download attempts (injectable for tests)
+                        tries = o.tries or 4 }, I)
+end
+
+-- A download that may be worth repeating: the server or the network had a bad moment (429, 5xx, timeouts, resets). A failed certificate check or a 404 is not: retrying
+-- would only delay the answer (and hammer a host that is already complaining).
+local RETRY = { [408] = true, [425] = true, [429] = true, [500] = true, [502] = true, [503] = true, [504] = true }
+local function transient(status, err)
+  if not RETRY[status] then return false end
+  err = tostring(err or ""):lower()
+  return not (err:find("certificate", 1, true) or err:find("not trusted", 1, true) or err:find("host name", 1, true))
+end
+
+-- Each attempt starts the file and the hash again (the sink already received whatever arrived before a failure). Waits 1, 3, 9 ... seconds plus up to 50% jitter.
+-- Returns status, err, bytes, sha256 hex; status "io" means the destination could not be opened.
+function I:download(url, path)
+  local status, err, n, hex
+  for attempt = 1, self.tries do
+    local out, oerr = io.open(path, "wb")
+    if not out then return "io", oerr end
+    local h = hashmod.new()
+    n = 0
+    status, err = self.transport.get(url, function(c) out:write(c); h:update(c); n = n + #c end)
+    out:close()
+    hex = h:hex()
+    if status == 200 or attempt == self.tries or not transient(status, err) then break end
+    self.sleep(3 ^ (attempt - 1) * (1 + math.random() / 2))
+  end
+  return status, err, n, hex
 end
 
 -- Index data is remote: nothing in it may name a path outside its package directory.
@@ -138,14 +167,11 @@ function I:apply(plan, requested)
         made[dir] = true
       end
       if j.direct then created[#created + 1] = { path = path, job = j, stop = j.kind == "app" and self.cfg.appdir or j.st.root } end
-      local out, oerr = io.open(path, "wb")
-      if not out then return fail(1, oerr) end
-      local h, n = hashmod.new(), 0
-      local status, err = self.transport.get(f.url, function(c) out:write(c); h:update(c); n = n + #c end)
-      out:close()
+      local status, err, n, hex = self:download(f.url, path)
+      if status == "io" then return fail(1, err) end
       if status ~= 200 then return fail(4, ("download of %s failed: %s"):format(f.url, err or status)) end
       if f.size and n ~= f.size then return fail(4, ("%s %s: size %d, expected %d"):format(j.a.name, f.dest, n, f.size)) end
-      if h:hex() ~= f.sha256 then return fail(4, ("%s %s: sha256 mismatch"):format(j.a.name, f.dest)) end
+      if hex ~= f.sha256 then return fail(4, ("%s %s: sha256 mismatch"):format(j.a.name, f.dest)) end
     end
   end
 

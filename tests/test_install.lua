@@ -146,3 +146,33 @@ assert(back.files["a b.lua"] == "h" and back.n == 3 and back.flag and back.s == 
 
 fs.rmtree(base)
 print("install ok")
+
+-- download retries: transient failures are repeated with a fresh file and hash, certificate failures and 404s are not
+do
+  local calls, slept = 0, {}
+  local function make(script)
+    return Installer.new{ cfg = cfg, index = idx, now = function() return 0 end, tries = 4, sleep = function(s) slept[#slept + 1] = s end,
+      transport = { get = function(url, sink)
+        calls = calls + 1
+        local step = table.remove(script, 1)
+        if step.partial then sink(step.partial) end    -- bytes that arrive before the connection dies must not end up in the file
+        return step.status, step.err, step.body and sink(step.body)
+      end } }
+  end
+  local path = os.tmpname()
+  local inst2 = make{ {status = 429, err = "Too Many Requests", partial = "junk"}, {status = 502, err = "timeout", partial = "more junk"}, {status = 200, body = "good"} }
+  local status, err, n, hex = inst2:download("http://x/f", path)
+  assert(status == 200 and n == 4 and io.open(path, "rb"):read("a") == "good", "retried with a fresh file")
+  assert(hex == require("vpm.hash").hex("good") and calls == 3 and #slept == 2 and slept[2] > slept[1], "backoff grows")
+
+  calls, slept = 0, {}
+  status = make{ {status = 502, err = "certificate is not trusted (unknown issuer)"} }:download("https://x/f", path)
+  assert(status == 502 and calls == 1 and #slept == 0, "certificate failures are not retried")
+  calls = 0
+  status = make{ {status = 404} }:download("http://x/f", path)
+  assert(status == 404 and calls == 1, "404 is not retried")
+  calls = 0
+  status = make{ {status = 503}, {status = 503}, {status = 503}, {status = 503} }:download("http://x/f", path)
+  assert(status == 503 and calls == 4, "gives up after tries attempts")
+  os.remove(path)
+end

@@ -107,3 +107,13 @@ The user has no networked board yet. Plan:
 The index builder (a Lua script under `vpm/index-builder/`, run on a PC or in CI) fetches LuaRocks' manifest,
 applies the filter, resolves files, and writes `index/v1/…`. Hosting target: static hosting (e.g. GitHub Pages
 or any web server); a second mirror is a copy of the directory. Nothing runs on a server except file serving.
+
+## Blobs, host tags and retries (2026-11-22)
+- **Blobs:** files of rocks whose source is an archive on an arbitrary host have no stable per-file URL. The builder (`VLR_BLOBS=dir` for the `one` stage and `emit`) keeps them as
+  content-addressed files `blobs/aa/<sha256>` served next to `index/`; the package entry says `"url": "blob:<sha256>"` and the installer resolves it against the index base
+  (`<root>/blobs/aa/<sha256>`, root = index base without `/index/v1`). The signed package file covers the hash, and every file is hash-checked, so the host needs no trust.
+  The first full run: 231 rocks, 4,245 blobs, 141 MB (some rocks ship large data files: a size policy for the index is still to decide).
+- **Host tags:** `emit` tags a rock `host = "luajit" | "nvim" | "openresty" | "awesome" | "love"` from the filter's tag or what its code requires (`ffi`/`jit`, `vim`, `ngx`/`resty`/`kong`,
+  `awful`/`gears`/..., `love`). vpm hides tagged versions unless the config says `hosts = { "luajit" }` etc.; the error then names the host.
+- **Retries:** the installer repeats a download after 429, 5xx, 408/425 or a network timeout (up to 4 attempts, waits 1, 3, 9 s plus jitter), each attempt with a fresh file and hash.
+  Certificate failures and 404 are never retried. Shortcut: `Retry-After` is ignored.

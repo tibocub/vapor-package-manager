@@ -176,3 +176,16 @@ do
   assert(status == 503 and calls == 4, "gives up after tries attempts")
   os.remove(path)
 end
+
+-- blob: URLs resolve against the index host
+do
+  local seen
+  local inst3 = Installer.new{ cfg = cfg, index = { base = "https://example.org/pkgs/index/v1" }, now = function() return 0 end, tries = 1,
+    transport = { get = function(url, sink) seen = url; sink("x"); return 200 end } }
+  local sha = ("ab"):rep(32)
+  local path = os.tmpname()
+  assert(inst3:download("blob:" .. sha, path) == 200)
+  assert(seen == "https://example.org/pkgs/blobs/ab/" .. sha, seen)
+  assert(inst3:download("blob:abcd", path) == 400, "a malformed blob reference is refused")
+  os.remove(path)
+end

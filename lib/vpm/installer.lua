@@ -28,6 +28,13 @@ end
 -- Each attempt starts the file and the hash again (the sink already received whatever arrived before a failure). Waits 1, 3, 9 ... seconds plus up to 50% jitter.
 -- Returns status, err, bytes, sha256 hex; status "io" means the destination could not be opened.
 function I:download(url, path)
+  local blob = url:match("^blob:(%x+)$")
+  if blob then
+    -- a file the index host serves itself (content-addressed): <index root>/blobs/aa/<sha256>, index root = the index base without /index/vN. Hash-checked like any other file.
+    if #blob ~= 64 then return 400, "bad blob reference" end
+    local root = ((self.index and self.index.base) or ""):gsub("/index/v%d+/?$", "")
+    url = ("%s/blobs/%s/%s"):format(root, blob:sub(1, 2), blob)
+  end
   local status, err, n, hex
   for attempt = 1, self.tries do
     local out, oerr = io.open(path, "wb")

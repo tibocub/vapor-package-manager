@@ -29,6 +29,16 @@ if cmd == "one" then
   local root, origin = source.fetch(rs, dir)
   if not root then done(origin) end
   local entry, why = pkg.analyze(rs, root, origin)
+  -- files that have no stable per-file URL (archives from arbitrary hosts) are kept as content-addressed blobs, served next to the index
+  local blobs = os.getenv("VLR_BLOBS")
+  if entry and blobs then
+    for _, ent in pairs(entry.files) do
+      if not source.raw_url(origin, ent.src) then
+        local dst = ("%s/%s/%s"):format(blobs, ent.sha256:sub(1, 2), ent.sha256)
+        source.run(("mkdir -p %s && cp %s %s"):format(source.q(blobs .. "/" .. ent.sha256:sub(1, 2)), source.q(root .. "/" .. ent.src), source.q(dst)))
+      end
+    end
+  end
   source.run("rm -rf " .. source.q(dir))
   if not entry then done(why) end
   rec.host, rec.files, rec.bin, rec.modules, rec.requires, rec.luajit = info.host, entry.files, entry.bin, entry.modules, entry.requires, entry.luajit
@@ -122,7 +132,7 @@ if cmd == "emit" then
       }
       local files = {}
       for dest, ent in pairs(r.files) do
-        files[dest] = { sha256 = ent.sha256, size = ent.size, url = source.raw_url(r.origin, ent.src) }
+        files[dest] = { sha256 = ent.sha256, size = ent.size, url = source.raw_url(r.origin, ent.src) or ("blob:" .. ent.sha256) }
       end
       ver.files = files
       local kind = next(r.bin) and "app" or "lib"
@@ -134,6 +144,7 @@ if cmd == "emit" then
       if host then hostn = hostn + 1 end
     end
   end
+  if os.getenv("VLR_BLOBS") then os.execute(("mkdir -p %s/blobs && cp -r %s/. %s/blobs/"):format(source.q(out), source.q(os.getenv("VLR_BLOBS")), source.q(out))) end
   write(out .. "/index/v1/meta.json", json.encode({
     format = 1, lua = "5.4", packages = n, built = os.date("!%Y-%m-%d"), serial = os.time(),
     provided = filter.provided, stub = filter.stub }) .. "\n")

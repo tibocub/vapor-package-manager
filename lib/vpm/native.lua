@@ -7,6 +7,13 @@
 local fs = require("vpm.fs")
 local M = {}
 
+-- Can vpm build this index entry? (a C rock with the builtin build type, a plan, and a source rock with a hash). One rule for the installer, search and the index builder.
+function M.buildable(meta)
+  local n = meta and meta.native
+  local src = meta and meta.luarocks and meta.luarocks.src
+  return n ~= nil and n.native == "c" and n.build == "builtin" and type(n.plan) == "table" and src ~= nil and type(src.url) == "string" and type(src.sha256) == "string"
+end
+
 function M.shq(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 
 local function safe_path(p) return type(p) == "string" and p ~= "" and not p:find("%z") and p:sub(1, 1) ~= "/" and not p:find("%.%.") and not p:find("\\", 1, true) end

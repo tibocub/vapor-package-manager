@@ -11,7 +11,7 @@ I.__index = I
 -- cfg = { libdir, appdir, bindir, local_root, reserve?, free_space? }
 function M.new(o)
   return setmetatable({ cfg = o.cfg, transport = o.transport, index = o.index,
-                        now = o.now or os.time, states = {},
+                        now = o.now or os.time, states = {}, profile = o.profile,
                         sleep = o.sleep or (vapor and vapor.sleep) or function() end,  -- backoff between download attempts (injectable for tests)
                         tries = o.tries or 4 }, I)
 end
@@ -111,13 +111,21 @@ function I:apply(plan, requested)
       own_cache[a.scope] = own_cache[a.scope] or self.owners(st)
       local own = kind == "lib" and own_cache[a.scope] or {}
       local old = st:get(a.name)
-      if meta.native then   -- shortcut: native rocks are listed and described but cannot be built yet
+      local nat
+      if meta.native then
         local n = meta.native
-        return fail(4, ("%s %s needs a build (%s%s): vpm cannot build native rocks yet"):format(a.name, a.version,
-          n.native == "c" and "a C compiler" or n.native == "build" and "a build step" or "native code",
-          n.external and (", system libraries " .. table.concat(n.external, ", ")) or ""))
+        local src = meta.luarocks and meta.luarocks.src
+        if not (require("vpm.native").buildable(meta) and kind == "lib") then   -- shortcut: only C rocks with the builtin build type (and a plan in the index) can be built; make/cmake/other languages are listed and described
+          return fail(4, ("%s %s needs a build (%s%s): vpm cannot build this kind of rock yet"):format(a.name, a.version,
+            n.native == "c" and "a C compiler" or n.native == "build" and "a build step" or "native code",
+            n.external and (", system libraries " .. table.concat(n.external, ", ")) or ""))
+        end
+        local prof = self.profile or require("vpm.profile").detect()
+        local can, missing = require("vpm.profile").can_install(prof, "c")
+        if not can then return fail(4, ("%s %s is C code and this machine lacks %s"):format(a.name, a.version, table.concat(missing, ", "))) end
+        nat = { plan = n.plan, src = src, srcdir = n.srcdir, profile = prof }
       end
-      local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old }
+      local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old, native = nat }
       local any_existing = false
       for dest, f in pairs(meta.files or {}) do
         if not safe_rel(dest) then return fail(1, ("%s: unsafe file path '%s' in index"):format(a.name, dest)) end
@@ -138,7 +146,7 @@ function I:apply(plan, requested)
       end
       -- A fresh install is written straight to its final place and undone by the journal if anything fails;
       -- an upgrade goes through staging so the working version survives a failed download.
-      job.direct = not old and not any_existing
+      job.direct = not old and not any_existing and not nat      -- a native build is staged: the compiled files are only known after the download
       table.sort(job.files, function(x, y) return x.dest < y.dest end)
       jobs[#jobs + 1] = job
     end
@@ -185,6 +193,37 @@ function I:apply(plan, requested)
       if status ~= 200 then return fail(4, ("download of %s failed: %s"):format(f.url, err or status)) end
       if f.size and n ~= f.size then return fail(4, ("%s %s: size %d, expected %d"):format(j.a.name, f.dest, n, f.size)) end
       if hex ~= f.sha256 then return fail(4, ("%s %s: sha256 mismatch"):format(j.a.name, f.dest)) end
+    end
+  end
+
+  -- 2b. native rocks: fetch the source rock, check its hash before unpacking anything, compile into staging, and add the results to the package's files
+  for _, j in ipairs(jobs) do
+    local nat = j.native
+    if nat then
+      local native = require("vpm.native")
+      local stage = j.st:staging(j.a.name)
+      local scratch = stage .. "/.vpm-src"
+      fs.mkdirp(scratch)
+      local rock = scratch .. "/source.rock"
+      local status, err, n, hex = self:download(nat.src.url, rock)
+      if status == "io" then return fail(1, err) end
+      if status ~= 200 then return fail(4, ("download of %s failed: %s"):format(nat.src.url, err or status)) end
+      if nat.src.size and n ~= nat.src.size then return fail(4, ("%s: source rock size %d, expected %d"):format(j.a.name, n, nat.src.size)) end
+      if hex ~= nat.src.sha256 then return fail(4, ("%s: source rock sha256 mismatch"):format(j.a.name)) end
+      local root, uerr = native.unpack(nat.profile, rock, scratch, nat.srcdir)
+      if not root then return fail(1, ("%s: %s"):format(j.a.name, uerr)) end
+      local built, berr = native.build(nat.profile, nat.plan, root, stage, { prefixes = self.cfg.prefixes })
+      fs.rmtree(scratch)
+      if not built then return fail(1, ("%s %s: %s"):format(j.a.name, j.a.version, berr)) end
+      for _, rel in ipairs(built) do
+        local h, size = hashmod.new(), 0
+        local f = assert(io.open(stage .. "/" .. rel, "rb"))
+        while true do local c = f:read(8192); if not c then break end h:update(c); size = size + #c end
+        f:close()
+        local target = j.base .. "/" .. rel
+        j.files[#j.files + 1] = { dest = rel, sha256 = h:hex(), size = size, existed = fs.exists(target), built = true }
+      end
+      table.sort(j.files, function(x, y) return x.dest < y.dest end)
     end
   end
 

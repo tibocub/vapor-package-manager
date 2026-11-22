@@ -30,6 +30,8 @@ return function(ctx, args)
     ctx.out("  native:    %s%s", what, (n.langs and #n.langs > 0) and (" (" .. table.concat(n.langs, ", ") .. ")") or "")
     if n.external then ctx.out("             system libraries: %s", table.concat(n.external, ", ")) end
     if n.build_deps then ctx.out("             build needs: %s", table.concat(n.build_deps, ", ")) end
+    local can, missing = require("vpm.profile").can_install(ctx.profile(), n.native)
+    ctx.out("  here:      %s", can and "can be installed on this machine" or ("cannot be installed here: needs " .. table.concat(missing, ", ")))
   else
     ctx.out("  native:    no (pure Lua)")
   end

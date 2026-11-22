@@ -58,7 +58,7 @@ function I:meta()
   return self.meta_doc
 end
 
--- The catalogue for `vpm search`: index/v1/search.jsonl, one JSON object per line { n = name, v = version, s = summary, c = "pure"|"c"|"build"|"other", h = host, w = "ok"|"fail" }.
+-- The catalogue for `vpm search`: index/v1/search.jsonl, one JSON object per line { n = name, v = version, s = summary, c = "pure"|"c"|"build"|"other", b = 1 when vpm can build it, h = host, w = "ok"|"fail" }.
 -- Signature-checked like every index file. Returns a list, or nil, status, err.
 function I:catalogue()
   if self.keys then

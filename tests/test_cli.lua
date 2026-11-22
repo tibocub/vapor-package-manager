@@ -16,9 +16,10 @@ publish{
 }
 
 local config = { libdir = sys .. "/lib", appdir = sys .. "/apps", bindir = sys .. "/bin", index = "file://" .. mirror .. "/index/v1" }
+local test_profile            -- nil: this machine; a table: a pretend machine
 local function vpm(args, answers, cwd)
   local out, err = {}, {}
-  local code = cli.main(args, { config = config, decode = decode, cwd = cwd or proj,
+  local code = cli.main(args, { config = config, decode = decode, cwd = cwd or proj, profile = test_profile,
     out = function(s) out[#out + 1] = s end, err = function(s) err[#err + 1] = s end,
     read = function() if answers == nil then return nil end return table.remove(answers, 1) end,
     now = function() return 0 end })
@@ -77,6 +78,52 @@ assert(has(out, "ansicolors") and not has(out, "nvimthing"), out)
 code, out = vpm({ "search", "no-such-thing-xyz" })
 assert(code == 1 and has(out, "nothing found"))
 assert(select(1, vpm({ "search", "--native=sideways" })) == 2)
+
+-- a C rock: the index carries the build plan and the hash of the source rock; vpm checks the hash, compiles, and installs the result like any other file
+if os.execute("command -v tar >/dev/null 2>&1") == 0 and require("vpm.profile").detect().can_build_c then
+  local csrc = base .. "/csrc"
+  assert(fs.mkdirp(csrc .. "/cdemo-1.0/src"))
+  fs.write(csrc .. "/cdemo-1.0/src/core.c", '#include "lua.h"\nstatic int f(lua_State *L){ lua_pushinteger(L, 42); return 1; }\nint luaopen_vpmcdemo_core(lua_State *L){ lua_pushcfunction(L, f); return 1; }\n')
+  assert(os.execute("cd " .. csrc .. " && tar -czf cdemo.src.rock cdemo-1.0") == 0)
+  local rock = fs.read(csrc .. "/cdemo.src.rock")
+  local function cdemo(sha)
+    return { versions = { ["1.0-1"] = { files = { ["vpmcdemo.lua"] = "return require('vpmcdemo.core')" },
+      native = { native = "c", build = "builtin", langs = { "c" }, plan = { modules = { { name = "vpmcdemo.core", sources = { "src/core.c" } } } } },
+      luarocks = { src = { url = "file://" .. csrc .. "/cdemo.src.rock", sha256 = sha or require("vpm.hash").hex(rock), size = #rock } } } } }
+  end
+  publish{ cdemo = cdemo() }
+  code, out = vpm({ "info", "cdemo" })
+  assert(has(out, "needs a C compiler (c)") and has(out, "can be installed on this machine"), out)
+  code, out, err = vpm({ "install", "-g", "cdemo" })
+  assert(code == 0 and fs.exists(sys .. "/lib/vpmcdemo.lua") and fs.exists(sys .. "/lib/vpmcdemo/core.so"), tostring(err) .. out)
+  package.cpath = sys .. "/lib/?.so;" .. package.cpath
+  assert(require("vpmcdemo.core")() == 42, "the built module runs")
+  code, out = vpm({ "check", "-g" })
+  assert(code == 0, out)
+  fs.remove(sys .. "/lib/vpmcdemo/core.so")                    -- not overwritten in place: the real one is mapped into this process
+  fs.write(sys .. "/lib/vpmcdemo/core.so", "tampered")
+  code, out = vpm({ "check", "-g" })
+  assert(code ~= 0 and has(out, "core.so"), "the built file is tracked and checked: " .. out)
+  vpm({ "check", "-g", "--repair" })
+  code = vpm({ "remove", "-g", "cdemo" })
+  assert(code == 0 and not fs.exists(sys .. "/lib/vpmcdemo/core.so") and not fs.exists(sys .. "/lib/vpmcdemo.lua"), "built files are removed with the package")
+
+  publish{ cdemo = cdemo(string.rep("0", 64)) }                                  -- the source rock does not match the hash in the signed index
+  code, out, err = vpm({ "install", "-g", "cdemo" })
+  assert(code == 4 and has(err, "source rock sha256 mismatch") and not fs.exists(sys .. "/lib/vpmcdemo/core.so") and not fs.exists(sys .. "/lib/vpmcdemo.lua"), err)
+
+  publish{ cdemo = cdemo() }
+  test_profile = { platform = "linux", dialect = "5.1", dlopen = true, exec = true, tools = { tar = true, unzip = true }, missing = { "a C compiler" }, can_build_c = false }
+  code, out, err = vpm({ "install", "-g", "cdemo" })
+  assert(code == 4 and has(err, "lacks a C compiler") and not fs.exists(sys .. "/lib/vpmcdemo.lua"), err)
+  code, out = vpm({ "info", "cdemo" })
+  assert(has(out, "cannot be installed here: needs a C compiler"), out)
+  code, out = vpm({ "search", "--here" })
+  assert(has(out, "ansicolors") and not has(out, "cdemo") and not has(out, "zlibish"), "--here hides what this machine cannot install: " .. out)
+  test_profile = nil
+  code, out = vpm({ "search", "--here" })
+  assert(has(out, "cdemo") and not has(out, "zlibish"), "with a compiler C rocks are offered; unbuildable ones are not: " .. out)
+end
 
 -- 3. list, world, why
 code, out = vpm({ "ls", "-g" })

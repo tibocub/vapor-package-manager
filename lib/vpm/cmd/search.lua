@@ -10,6 +10,7 @@ return function(ctx, args)
   local hosts
   if f.host then hosts = {}; for h in f.host:gmatch("[^,]+") do hosts[h] = true end end
 
+  local profile = f.here and ctx.profile()
   local list, status, err = ctx.index():catalogue()
   if not list then ctx.err("%s", err or ("index error " .. tostring(status))); return 4 end
 
@@ -24,6 +25,10 @@ return function(ctx, args)
     if hosts and not hosts[e.h or ""] then ok = false end
     if f.no_host and e.h then ok = false end
     if f.works and e.w ~= "ok" then ok = false end
+    if profile then
+      local can = require("vpm.profile").can_install(profile, c ~= "pure" and c or nil)
+      if not can or (c ~= "pure" and not e.b) then ok = false end      -- b: vpm can build it (class c with a plan and a source rock)
+    end
     if ok then
       local hay = (e.n .. " " .. (e.s or "")):lower()
       for _, w in ipairs(words) do if not hay:find(w, 1, true) then ok = false; break end end

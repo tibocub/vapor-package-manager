@@ -12,7 +12,7 @@ local COMMANDS = { install = true, remove = true, list = true, upgrade = true, w
 local FLAGS = { g = "global", n = "dry_run", y = "yes", q = "quiet", v = "verbose", f = "force" }
 local LONG = { global = "global", ["dry-run"] = "dry_run", yes = "yes", quiet = "quiet", verbose = "verbose",
                force = "force", repair = "repair", ["no-register"] = "no_register",
-               pure = "pure", works = "works", ["no-host"] = "no_host", all = "all" }
+               pure = "pure", works = "works", ["no-host"] = "no_host", all = "all", here = "here" }
 
 local USAGE = [[
 usage: vpm <command> [options] [packages]
@@ -22,7 +22,7 @@ usage: vpm <command> [options] [packages]
   upgrade (u) [pkg...]         upgrade to the newest allowed versions
   why pkg                      what uses a package
   info pkg                     versions, dependencies, size
-  search [words]               find packages: --pure  --native=none|c|any  --host=nvim,love  --no-host  --works (runs on vlr)  --all
+  search [words]               find packages: --pure  --native=none|c|any  --host=nvim,love  --no-host  --works (runs on vlr)  --here (installable on this machine)  --all
   check [--repair]             verify installed files, undo a crashed run
   world                        the packages you asked for
   init                         create a vpm.lua here
@@ -118,10 +118,14 @@ local function context(parsed, env)
     end
     return built.index
   end
+  function ctx.profile()            -- what this machine can do (compiler, tools); tests inject env.profile
+    if not built.profile then built.profile = env.profile or require("vpm.profile").detect() end
+    return built.profile
+  end
   function ctx.installer()          -- downloads and places files: load it after resolving, not before
     if not built.installer then
       local index = ctx.index()
-      built.installer = require("vpm.installer").new{ cfg = cfg, transport = built.transport, index = index, now = env.now }
+      built.installer = require("vpm.installer").new{ cfg = cfg, transport = built.transport, index = index, now = env.now, profile = ctx.profile() }
     end
     return built.installer
   end

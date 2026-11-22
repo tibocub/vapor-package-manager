@@ -5,6 +5,7 @@ local fs, hash, json = require("vpm.fs"), require("vpm.hash"), require("json")
 local M = {}
 
 function M.new(mirror)
+  local catalogue = {}     -- name -> line; kept across calls so search sees every package published so far
   return function(packages)
     for name, p in pairs(packages) do
       local doc = { name = name, kind = p.kind or "lib", versions = {} }
@@ -16,7 +17,7 @@ function M.new(mirror)
           files[dest] = { sha256 = m.badhash and string.rep("0", 64) or hash.hex(content), size = #content, url = "file://" .. path }
           size = size + #content
         end
-        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary, native = m.native, host = m.host, works = m.works }
+        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary, native = m.native, host = m.host, works = m.works, luarocks = m.luarocks }
       end
       local shard = name:sub(1, 2):lower()
       assert(fs.mkdirp(mirror .. "/index/v1/p/" .. shard))
@@ -27,8 +28,9 @@ function M.new(mirror)
       local newest
       for v in pairs(p.versions) do newest = v end
       local m = p.versions[newest]
-      lines[#lines + 1] = json.compact({ n = name, v = newest, s = m.summary, c = m.native and m.native.native or "pure", h = m.host, w = m.works })
+      catalogue[name] = json.compact({ n = name, v = newest, s = m.summary, c = m.native and m.native.native or "pure", b = require("vpm.native").buildable(m) and 1 or nil, h = m.host, w = m.works })
     end
+    for _, line in pairs(catalogue) do lines[#lines + 1] = line end
     table.sort(lines)
     assert(fs.write(mirror .. "/index/v1/search.jsonl", table.concat(lines, "\n") .. "\n"))
     assert(fs.write(mirror .. "/index/v1/meta.json", json.encode({ format = 1, lua = "5.4", provided = { lpeg = "1.1.0" } })))

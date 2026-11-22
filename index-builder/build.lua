@@ -27,6 +27,10 @@ if cmd == "one" then
   if not ok then done(reason) end
   local dir = ("%s/%s-%s"):format(work, name, ver)
   local root, origin = source.fetch(rs, dir)
+  if not root and (origin == "source-download" or origin == "source-ref-missing" or origin == "source-scheme" or origin == "source-extract") then
+    source.run("rm -rf " .. source.q(dir))      -- the rock's own source is gone: luarocks.org's copy
+    root, origin = source.fetch_srcrock(name, ver, rs, dir)
+  end
   if not root then done(origin) end
   local entry, why
   local native = info.native.native and info.native
@@ -88,9 +92,34 @@ if cmd == "one" then
   done("ok")
 end
 
+-- lua index-builder/build.lua mirror NAME VERSION WORK_DIR MIRROR_DIR : hash, size and date of the rockspec and the source rock exactly as luarocks.org serves them -> MIRROR_DIR/NAME.lua
+if cmd == "mirror" then
+  local name, ver, work, outdir = arg[2], arg[3], arg[4], arg[5]
+  assert(name:match("^[%w][%w%._%-]*$") and ver:match("^[%w][%w%._%-]*$"), "unsafe name")
+  source.run("mkdir -p " .. source.q(work))
+  local function one(ext, limit)
+    local file, hdr = ("%s/%s-%s.%s"):format(work, name, ver, ext), ("%s/%s-%s.%s.hdr"):format(work, name, ver, ext)
+    local url = ("https://luarocks.org/%s-%s.%s"):format(name, ver, ext)
+    local ok = source.run(("curl -sSfL -m 120 --max-filesize %d -D %s -o %s %s"):format(limit, source.q(hdr), source.q(file), source.q(url)))
+    local res
+    if ok then
+      local okh, h = source.run("sha256sum " .. source.q(file))
+      local _, head = source.run("cat " .. source.q(hdr))
+      local _, size = source.run("stat -c %s " .. source.q(file))
+      res = okh and { sha256 = h:match("^(%x+)"), size = tonumber(tostring(size):match("%d+")), date = tostring(head):match("[Ll]ast%-[Mm]odified:%s*([^\r\n]+)") }
+    end
+    source.run(("rm -f %s %s"):format(source.q(file), source.q(hdr)))
+    return res
+  end
+  local rec = { name = name, version = ver, rockspec = one("rockspec", 1000000), src = one("src.rock", 60000000) }
+  write(("%s/%s.lua"):format(outdir, name), "return " .. json.lua_literal(rec) .. "\n")
+  os.exit(0)
+end
+
 if cmd == "emit" then
   local manifest, evaluate = require("manifest"), require("evaluate")
   local mpath, specdir, recdir, out = arg[2], arg[3], arg[4], arg[5]
+  local mirrordir = os.getenv("VLR_MIRROR")      -- the `mirror` stage's output, merged into each entry as `luarocks`
   local repo = manifest.load(mpath)
   local _, checked = evaluate(repo, specdir)
 
@@ -155,6 +184,11 @@ if cmd == "emit" then
       local ver = {
         lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = host,
         undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size, native = r.native,
+        luarocks = (function()
+          local f = mirrordir and loadfile(("%s/%s.lua"):format(mirrordir, name))
+          local m = f and f()
+          if m and (m.rockspec or m.src) then return { rockspec = m.rockspec, src = m.src, date = (m.rockspec or m.src or {}).date } end
+        end)(),
         blocked_by = blocked and { name = blocked.name, reason = blocked.reason } or nil,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }

@@ -113,5 +113,35 @@ function M.fetch(rs, dir)
   return work, { type = "git", url = gurl, commit = commit, ref = ref }
 end
 
+-- Fallback when the rock's own upstream is gone (about 15% of rocks): luarocks.org keeps NAME-VERSION.src.rock, a zip of the rockspec and the source (usually the original archive).
+-- Returns root, origin; origin = { type = "luarocks", url, sha256, size, date } (date = Last-Modified of the file).
+function M.fetch_srcrock(name, ver, rs, dir)
+  assert(name:match("^[%w][%w%._%-]*$") and ver:match("^[%w][%w%._%-]*$"), "unsafe name")
+  local url = ("https://luarocks.org/%s-%s.src.rock"):format(name, ver)
+  run("mkdir -p " .. q(dir .. "/z") .. " " .. q(dir .. "/x"))
+  local file, hdr = dir .. "/rock.zip", dir .. "/hdr"
+  if not run(("curl -sSfL -m 120 --max-filesize 60000000 -D %s -o %s %s"):format(q(hdr), q(file), q(url))) then return nil, "source-download" end
+  local okh, h = run("sha256sum " .. q(file))
+  local _, head = run("cat " .. q(hdr))
+  local date = tostring(head):match("[Ll]ast%-[Mm]odified:%s*([^\r\n]+)")
+  local _, size = run("stat -c %s " .. q(file))
+  if not run(("unzip -q -o %s -d %s"):format(q(file), q(dir .. "/z"))) then return nil, "source-extract" end
+  run("rm -f " .. q(file))
+  local okl, list = run(("cd %s && ls -A"):format(q(dir .. "/z")))
+  local root
+  for f in (okl and list or ""):gmatch("[^\n]+") do
+    if f:match("%.zip$") then
+      if not run(("unzip -q -o %s -d %s"):format(q(dir .. "/z/" .. f), q(dir .. "/x"))) then return nil, "source-extract" end
+    elseif f:match("%.tar") or f:match("%.tgz$") or f:match("%.tbz2?$") then
+      if not run(("tar -xf %s -C %s --no-same-owner --no-same-permissions"):format(q(dir .. "/z/" .. f), q(dir .. "/x"))) then return nil, "source-extract" end
+    elseif not f:match("%.rockspec$") then
+      run(("mv %s %s"):format(q(dir .. "/z/" .. f), q(dir .. "/x/" .. f)))        -- the source came unpacked (a directory or loose files)
+    end
+  end
+  local top = (rs.source and rs.source.dir and run("test -d " .. q(dir .. "/x/" .. rs.source.dir)) and rs.source.dir) or only_dir(dir .. "/x")
+  root = top and (dir .. "/x/" .. top) or (dir .. "/x")
+  return root, { type = "luarocks", url = url, sha256 = okh and h:match("^(%x+)") or nil, size = tonumber(tostring(size):match("%d+")), date = date }
+end
+
 M.q, M.run = q, run
 return M

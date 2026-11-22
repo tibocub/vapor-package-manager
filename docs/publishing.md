@@ -1,4 +1,8 @@
-# Publishing to luarocks.org (research, 2026-11-22; nothing built yet)
+# Publishing to luarocks.org (research and implementation, 2026-11-22)
+
+**Implemented:** `vpm publish` (dry run: checks the git remote and tag, prints the rockspec) and `vpm publish --upload` (check_rockspec, confirmation, TFA token from `VPM_LUAROCKS_TFA`, multipart upload). Tested against a fake server only;
+the real server is untested until the user provides a key (first upload: a throwaway module name). Decisions taken (user asked for advice): source = the git remote at a tag that must exist and be pushed (`git+https://...`, never an archive made by vpm); key only from `VPM_LUAROCKS_KEY`.
+Only pure-Lua projects (builtin build, one module per .lua file); a project with C code is not handled yet.
 
 Decision (user): publish through luarocks.org itself unless a feature of ours needs more. Source: https://luarocks.org/docs/api (read 2026-11-22) and the incident report it links.
 
@@ -32,6 +36,6 @@ The incident report (https://luarocks.org/security-incident-september-2026) says
 Consequences for us: (a) our builder already loads rockspecs with `load(text, name, "t", sandbox_env)` (text only, no bytecode), keep it that way; (b) a rockspec is code from the network: vpm never evaluates one on the client,
 the signed index carries the evaluated fields; (c) this is why the signed hash mirror matters: a version's bytes are pinned by our signature, not by luarocks.org's say-so.
 
-## To decide with the user
+## Decided (advice accepted by default; change on request)
 - Where `source.url` comes from for a project that is not on a forge, and whether vpm should create the archive (tag + `git archive`) itself.
 - Testing needs a real account and key: the user must create the key; I will not handle one without being given it, and the first upload should be a throwaway module name.

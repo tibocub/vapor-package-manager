@@ -99,6 +99,8 @@ Without a terminal and without `-y` it refuses.
 | command | does | scope default |
 |---|---|---|
 | `vpm init` | create a `vpm.lua` in the current directory (asks name, kind, entry file; `-y` takes defaults); no network | local |
+| `vpm publish [--upload] [--tag=T] [--source=URL] [--revision=N]` | publish this project to luarocks.org: dry run prints the rockspec; `--upload` sends it (key in `VPM_LUAROCKS_KEY`); see publishing.md | local |
+| `vpm bundle pkg... [--dir=D]` | fetch C rocks (hash-checked) and write `D/bundle.conf` for vlr's `make CONF_EXTRA=` | local |
 | `vpm install [spec...]` (alias `i`) | install the specs; no spec = what `./vpm.lua` asks for (updates `vpm-lock.lua`) | local |
 | `vpm install -g spec...` | install system-wide: a library, or a program with launchers | global |
 | `vpm remove spec...` (alias `rm`) | remove the named packages; refuses if another record needs one (`--force` overrides, plan lists the breakage) | as `install` |

@@ -1,7 +1,7 @@
 -- Index signing (docs/signing.md). Uses openssl's ed25519; the device only verifies (vaporOS vlua/vsign.c).
 --   lua index-builder/sign.lua keygen KEY.pem          create a private key, print the public key (64 hex chars)
 --   lua index-builder/sign.lua pubkey KEY.pem          print the public key again
---   lua index-builder/sign.lua sign KEY.pem INDEX_V1   write FILE.sig (64 raw bytes) next to meta.json and p/*/*.json
+--   lua index-builder/sign.lua sign KEY.pem INDEX_V1   write FILE.sig (64 raw bytes) next to meta.json, search.jsonl and p/*/*.json
 -- A signature covers the exact bytes of its file. meta.json carries the build `serial` (see emit).
 local function q(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
 local function sh(cmd)
@@ -24,7 +24,7 @@ elseif cmd == "pubkey" then
   print(pubkey(arg[2]))
 elseif cmd == "sign" then
   local key, dir = arg[2], arg[3]
-  local list = sh(("cd %s && ls meta.json p/*/*.json"):format(q(dir)))
+  local list = sh(("cd %s && ls meta.json search.jsonl p/*/*.json 2>/dev/null"):format(q(dir)))
   local n = 0
   for f in list:gmatch("[^\n]+") do
     sh(("openssl pkeyutl -sign -rawin -inkey %s -in %s -out %s"):format(q(key), q(dir .. "/" .. f), q(dir .. "/" .. f .. ".sig")))

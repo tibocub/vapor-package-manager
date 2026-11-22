@@ -1,7 +1,6 @@
 # Publishing to luarocks.org (research and implementation, 2026-11-22)
 
-**Implemented:** `vpm publish` (dry run: checks the git remote and tag, prints the rockspec) and `vpm publish --upload` (check_rockspec, confirmation, TFA token from `VPM_LUAROCKS_TFA`, multipart upload). Tested against a fake server only;
-the real server is untested until the user provides a key (first upload: a throwaway module name). Decisions taken (user asked for advice): source = the git remote at a tag that must exist and be pushed (`git+https://...`, never an archive made by vpm); key only from `VPM_LUAROCKS_KEY`.
+**Implemented:** `vpm publish` (dry run: checks the git remote and tag, prints the rockspec) and `vpm publish --upload` (check_rockspec, confirmation, TFA token from `VPM_LUAROCKS_TFA`, multipart upload). Verified on the real server (2026-11-23): `vpm-hello 0.1.0-1` (https://luarocks.org/modules/tibocub/vpm-hello, source github.com/tibocub/vpm-hello tag v0.1.0) was published with `vpm publish --upload` and then installed and run by the stock `luarocks install`. Decisions taken (user asked for advice): source = the git remote at a tag that must exist and be pushed (`git+https://...`, never an archive made by vpm); key only from `VPM_LUAROCKS_KEY`.
 Only pure-Lua projects (builtin build, one module per .lua file); a project with C code is not handled yet.
 
 Decision (user): publish through luarocks.org itself unless a feature of ours needs more. Source: https://luarocks.org/docs/api (read 2026-11-22) and the incident report it links.
@@ -39,3 +38,9 @@ the signed index carries the evaluated fields; (c) this is why the signed hash m
 ## Decided (advice accepted by default; change on request)
 - Where `source.url` comes from for a project that is not on a forge, and whether vpm should create the archive (tag + `git archive`) itself.
 - Testing needs a real account and key: the user must create the key; I will not handle one without being given it, and the first upload should be a throwaway module name.
+
+## Verified facts about the real server (2026-11-23)
+- `check_rockspec` answers `{}` (not `{"module":null,...}`) for an unknown package; a 200 with `{}` means "new module". Our code treats anything that is not a table as absent.
+- A rockspec-only upload makes the rockspec downloadable (`/NAME-VER.rockspec`) but **no** `NAME-VER.src.rock` exists (404): the server does not fetch or host the source. Consumers get the source from `source.url` (here a git tag).
+  Consequence for the index: only rocks that were uploaded with a source rock have a luarocks.org source rock; for those the builder uses it, for others vpm would have to use the rockspec's own source URL (git clone or archive), which is what the crawler's `source.fetch` already does.
+- The uploaded name is public and cannot be deleted through the API. The key used for the test was pasted in a chat; revoke it at /settings/api-keys.

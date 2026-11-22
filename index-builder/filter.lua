@@ -7,7 +7,7 @@ local V = require("vpm.version")
 local M = {}
 
 -- Libraries the firmware links in (rock name -> version). Keep in sync with vaporOS features/lua-libs.conf.
-M.provided = { luafilesystem = "1.9.0", lpeg = "1.1.0", ["lua-cjson"] = "2.1.0" }
+M.provided = { luafilesystem = "1.9.0", lpeg = "1.1.0", ["lua-cjson"] = "2.1.0", luasocket = "3.1.0" }   -- luasocket: vlr ships socket, ltn12, mime, socket.url, socket.http (pure Lua over vapor.net)
 
 -- Packages that are only a stub on Lua 5.4: compat53 backports 5.3 features to 5.1/5.2 (its init.lua does nothing
 -- on >= 5.3; the rock builds C modules only for those old versions). The runtime must preload an empty module.

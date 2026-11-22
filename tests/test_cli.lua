@@ -108,6 +108,20 @@ if os.execute("command -v tar >/dev/null 2>&1") == 0 and require("vpm.profile").
   code = vpm({ "remove", "-g", "cdemo" })
   assert(code == 0 and not fs.exists(sys .. "/lib/vpmcdemo/core.so") and not fs.exists(sys .. "/lib/vpmcdemo.lua"), "built files are removed with the package")
 
+  -- bundle: the same plan becomes a modules.conf line for vlr's make CONF_EXTRA=, the source is hash-checked first (no compiler needed)
+  local bdir = base .. "/bundle"
+  code, out, err = vpm({ "bundle", "cdemo", "--dir=" .. bdir })
+  assert(code == 0 and has(out, "bundle.conf"), tostring(err) .. out)
+  local conf = fs.read(bdir .. "/bundle.conf")
+  local csrcpath = conf:match("^vpmcdemo%.core luaopen_vpmcdemo_core (%S+/src/core%.c)$") or conf:match("\nvpmcdemo%.core luaopen_vpmcdemo_core (%S+/src/core%.c)\n")
+  assert(csrcpath and csrcpath:find(bdir, 1, true) == 1 and fs.exists(csrcpath), "conf line points at the unpacked source: " .. conf)
+  publish{ cdemo = cdemo(string.rep("0", 64)) }
+  code, out, err = vpm({ "bundle", "cdemo", "--dir=" .. base .. "/bundle2" })
+  assert(code == 4 and has(err, "does not match the index") and not fs.exists(base .. "/bundle2/bundle.conf"), err)
+  code, out, err = vpm({ "bundle", "ansicolors", "--dir=" .. base .. "/bundle3" })
+  assert(code == 4 and has(err, "pure Lua"), err)
+  publish{ cdemo = cdemo() }
+
   publish{ cdemo = cdemo(string.rep("0", 64)) }                                  -- the source rock does not match the hash in the signed index
   code, out, err = vpm({ "install", "-g", "cdemo" })
   assert(code == 4 and has(err, "source rock sha256 mismatch") and not fs.exists(sys .. "/lib/vpmcdemo/core.so") and not fs.exists(sys .. "/lib/vpmcdemo.lua"), err)

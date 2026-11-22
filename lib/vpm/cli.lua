@@ -8,7 +8,7 @@ local M = {}
 
 local ALIASES = { i = "install", rm = "remove", ls = "list", u = "upgrade" }
 local COMMANDS = { install = true, remove = true, list = true, upgrade = true, why = true, info = true,
-                   check = true, world = true, init = true, search = true }
+                   check = true, world = true, init = true, search = true, bundle = true }
 local FLAGS = { g = "global", n = "dry_run", y = "yes", q = "quiet", v = "verbose", f = "force" }
 local LONG = { global = "global", ["dry-run"] = "dry_run", yes = "yes", quiet = "quiet", verbose = "verbose",
                force = "force", repair = "repair", ["no-register"] = "no_register",
@@ -23,6 +23,7 @@ usage: vpm <command> [options] [packages]
   why pkg                      what uses a package
   info pkg                     versions, dependencies, size
   search [words]               find packages: --pure  --native=none|c|any  --host=nvim,love  --no-host  --works (runs on vlr)  --here (installable on this machine)  --all
+  bundle pkg... [--dir=D]      compile C rocks into a vlr (writes D/bundle.conf for vlr's make CONF_EXTRA=)
   check [--repair]             verify installed files, undo a crashed run
   world                        the packages you asked for
   init                         create a vpm.lua here
@@ -35,7 +36,7 @@ function M.parse(argv)
     local long, val = a:match("^%-%-([%w%-]+)=?(.*)$")
     if long and a:sub(1, 2) == "--" then
       if LONG[long] then r.flags[LONG[long]] = true
-      elseif long == "deps" or long == "index" or long == "config" or long == "native" or long == "host" then
+      elseif long == "deps" or long == "index" or long == "config" or long == "native" or long == "host" or long == "dir" then
         if val == "" then return nil, "--" .. long .. " needs a value (--" .. long .. "=...)" end
         r.flags[long] = val
       else return nil, "unknown option --" .. long end

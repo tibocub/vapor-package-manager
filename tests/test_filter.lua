@@ -29,8 +29,8 @@ assert(nat(spec('build={type="make"}')) == "other" and nat(spec('build={modules=
 assert(nat(spec('external_dependencies={OPENSSL={header="openssl/ssl.h"}}')) == "other" and nat(spec('build={modules={demo="demo.lua"}}')) == false)
 
 -- rejected, one rule each
-rejects(spec('dependencies={"lua >= 5.1, < 5.4"}'), "lua-version")
-rejects(spec('dependencies={"lua ~> 5.1"}'), "lua-version")                       -- LuaRocks prefix match: 5.1.x only
+accepts(spec('dependencies={"lua >= 5.1, < 5.4"}'))                              -- recorded, not rejected
+accepts(spec('dependencies={"lua ~> 5.1"}'))
 rejects('package="demo"\nversion="1"\n', "no-source-url")
 -- host-application rocks are accepted but tagged
 local function host(text) local rs = assert(sandbox.load(text, "t")); local ok, _, info = filter.check(rs); assert(ok); return info.host end
@@ -49,7 +49,7 @@ local set = {
   needsgood = chk(spec('dependencies={"good"}')),
   native = chk(spec('build={type="make"}')),
   needsnative = chk(spec('dependencies={"native"}')),
-  nolua = chk(spec('dependencies={"lua >= 5.1, < 5.4"}')),
+  nolua = chk('package="nolua"\nversion="1"\n'),   -- no source url: a real rejection
   deep   = chk(spec('dependencies={"nolua"}')),
   oldprov = chk(spec('dependencies={"lpeg < 1.0"}')),   -- firmware has lpeg 1.1.0
   missing = chk(spec('dependencies={"nosuchrock"}')),
@@ -57,7 +57,7 @@ local set = {
 local status, root = filter.closure(set)
 assert(status.good == true and status.needsgood == true)
 assert(status.native == true and status.needsnative == true, "native rocks and their dependents are in the index")
-assert(status.deep == "dep" and root.deep.name == "nolua" and root.deep.reason == "lua-version")
+assert(status.deep == "dep" and root.deep.name == "nolua" and root.deep.reason == "no-source-url")
 assert(status.oldprov == "dep" and root.oldprov.reason == "provided-version")
 assert(status.missing == "dep" and root.missing.reason == "not-in-index")
 

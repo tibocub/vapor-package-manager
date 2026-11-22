@@ -30,6 +30,11 @@ if cmd == "one" then
   if not root then done(origin) end
   local entry, why
   local native = info.native.native and info.native
+  if not native then
+    entry, why = pkg.analyze(rs, root, origin)
+    -- a builtin rock without a module list whose tree holds C is native although the rockspec does not say so
+    if not entry and why == "native-source" then native = { native = "c" } end
+  end
   if native then
     -- a rock that compiles or runs a build step: no file list (vpm builds it from source); the tree tells what language build systems like make or cmake compile
     local okl, listing = source.run(("cd %s && find . -type f -not -path './.git/*' | head -20000"):format(source.q(root)))
@@ -38,15 +43,21 @@ if cmd == "one" then
       p = p:gsub("^%./", "")
       if not (p:find("^tests?/") or p:find("^spec/") or p:find("^docs?/") or p:find("^examples?/")) then tree[#tree + 1] = p end
     end
-    native = require("classify").classify(rs, tree)
-    entry = { files = {}, bin = {}, modules = {}, requires = {} }
+    if why == "native-source" then   -- classify as a make-like build so the tree decides
+      local fake = {}
+      for k, v in pairs(rs) do fake[k] = v end
+      fake.build = { type = "make" }
+      native = require("classify").classify(fake, tree)
+      native.build = (rs.build or {}).type or "builtin"
+    else
+      native = require("classify").classify(rs, tree)
+    end
+    entry, why = { files = {}, bin = {}, modules = {}, requires = {} }, nil
     local bt = (rs.build or {}).type
     if bt == nil or bt == "builtin" or bt == "module" then   -- other build types do not use build.modules for module names
       for m in pairs((rs.build or {}).modules or {}) do if type(m) == "string" then entry.modules[#entry.modules + 1] = m end end
     end
     table.sort(entry.modules)
-  else
-    entry, why = pkg.analyze(rs, root, origin)
   end
   -- files that have no stable per-file URL (archives from arbitrary hosts) are kept as content-addressed blobs, served next to the index
   local blobs = os.getenv("VLR_BLOBS")

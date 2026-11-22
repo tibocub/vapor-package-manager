@@ -29,6 +29,11 @@ assert(e.files["a.lua"] and e.files["b/init.lua"] and e.files["p/q.lua"], "desti
 assert(#e.files["a.lua"].sha256 == 64 and e.files["a.lua"].size == 8)
 assert(table.concat(e.modules, ",") == "a,b,p.q")
 
+-- install.lua as a list keeps relative paths; data files (Teal declarations) are accepted without a syntax check, native extensions are not
+e = ok({ ["types/x/x.d.tl"] = "this is not lua", ["lib/y.lua"] = "return 1" }, 'build={modules={},install={lua={"types/x/x.d.tl","lib/y.lua"}}}')
+assert(e.files["types/x/x.d.tl"] and e.files["lib/y.lua"] and table.concat(e.modules, ",") == "lib.y", "install.lua list")
+bad({ ["a.so"] = "x" }, 'build={modules={},install={lua={"a.so"}}}', "native-source")
+
 -- auto-detection when `build.modules` is absent: src/ prefix, skips spec/, no C
 e = ok({ ["src/m.lua"] = "return 1", ["src/sub/n.lua"] = "return 2", ["spec/m_spec.lua"] = "x" }, "")
 assert(e.files["m.lua"] and e.files["sub/n.lua"] and not e.files["spec/m_spec.lua"], "autodetect")

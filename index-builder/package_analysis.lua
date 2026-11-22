@@ -58,9 +58,12 @@ local function plan(rs, root)
   end
 
   local install = build.install or {}
+  local NATIVE_EXT = { c = true, h = true, cc = true, cpp = true, cxx = true, so = true, dll = true, dylib = true, o = true, a = true, rs = true, go = true }
   for name, src in pairs(install.lua or {}) do
-    if type(src) == "string" and src:match("%.lua$") then files[module_path(tostring(name)) .. ".lua"] = src
-    else return nil, "native-source" end
+    if type(src) ~= "string" or NATIVE_EXT[src:match("%.([%w_]+)$") or ""] then return nil, "native-source" end
+    if type(name) == "number" then files[src] = src          -- a list: installed under the same relative path (also data files such as Teal .d.tl)
+    elseif src:match("%.lua$") then files[module_path(tostring(name)) .. ".lua"] = src
+    else files[module_path(tostring(name)) .. "." .. src:match("%.([%w_]+)$")] = src end
   end
   local binlist = install.bin or {}
   for k, src in pairs(binlist) do
@@ -93,10 +96,13 @@ function M.analyze(rs, root, origin)
     local text = h:read("a"); h:close()
     if #text > MAX_FILE then return nil, "file-too-large" end
     local body = text:gsub("^#[^\n]*", "")
-    local fn, err = load(body, "=" .. f.src, "t")
-    if not fn then return nil, "syntax-5.4" end
-    requires_in(body, reqset)
-    if not f.bin then entry.modules[#entry.modules + 1] = (f.dest:gsub("%.lua$", ""):gsub("/init$", ""):gsub("/", ".")) end
+    local islua = f.src:match("%.lua$") or f.bin
+    if islua then
+      local fn, err = load(body, "=" .. f.src, "t")
+      if not fn then return nil, "syntax-5.4" end
+      requires_in(body, reqset)
+    end
+    if not f.bin and islua then entry.modules[#entry.modules + 1] = (f.dest:gsub("%.lua$", ""):gsub("/init$", ""):gsub("/", ".")) end
     paths[#paths + 1] = f
     entry.size = (entry.size or 0) + #text
   end

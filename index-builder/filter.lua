@@ -55,7 +55,7 @@ function M.check(rs)
     local d, err = V.parse_dep(s)
     if not d then return false, "bad-dependency" end
     if d.name == "lua" then
-      if not lua_ok(d.constraints) then return false, "lua-version" end
+      -- not a rejection since 2026-11-22: the constraint is recorded (entry.lua) and shown; vlr's default dialect is 5.1, so "lua < 5.4" rocks are usable there
     else
       deps[#deps + 1] = d
     end

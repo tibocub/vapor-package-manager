@@ -23,6 +23,7 @@ return function(ctx, args)
   if m.license then ctx.out("  license:   %s", m.license) end
   if m.homepage then ctx.out("  homepage:  %s", m.homepage) end
   if m.host then ctx.out("  note:      written for %s", tostring(m.host)) end
+  if m.blocked_by then ctx.out("  blocked:   needs %s, which is not available (%s)", m.blocked_by.name, tostring(m.blocked_by.reason)) end
   local n = m.native
   if n then
     local what = ({ c = "needs a C compiler", build = "needs a build step", other = "native code" })[n.native] or "native code"

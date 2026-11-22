@@ -94,12 +94,6 @@ if cmd == "emit" then
   local repo = manifest.load(mpath)
   local _, checked = evaluate(repo, specdir)
 
-  -- rockspec-level closure first, so "rejected because of a dependency" is not reported as "not processed"
-  local pre = filter.closure(checked)
-  for name, c in pairs(checked) do
-    if c.ok and pre[name] ~= true then checked[name] = { ok = false, reason = "dep" } end
-  end
-
   local records = {}
   for name, c in pairs(checked) do
     local f = loadfile(("%s/%s.lua"):format(recdir, name))
@@ -111,7 +105,7 @@ if cmd == "emit" then
       checked[name] = { ok = false, reason = "not-processed" }
     end
   end
-  local status = filter.closure(checked)
+  local status, root = filter.closure(checked)
 
   -- modules the firmware provides, for the undeclared-require warning
   local firmware = { lfs = true, lpeg = true, re = true, cjson = true, ["cjson.util"] = true, compat53 = true }
@@ -119,7 +113,7 @@ if cmd == "emit" then
     if seen[name] then return end
     seen[name] = true
     local r = records[name]
-    if not r then return end
+    if not r or r.status ~= "ok" then return end
     for _, m in ipairs(r.modules) do set[m] = true end
     for _, s in ipairs(r.deps) do
       local d = V.parse_dep(s)
@@ -134,7 +128,9 @@ if cmd == "emit" then
   table.sort(names)
   for _, name in ipairs(names) do
     local st = status[name]
-    if st ~= true then
+    -- a good record whose dependency is unavailable stays visible: the entry says which dependency blocks it (2026-11-22: nothing is hidden because of a dependency)
+    local blocked = st == "dep" and records[name] and records[name].status == "ok" and root[name]
+    if st ~= true and not blocked then
       local k = tostring(st)
       reasons[k] = (reasons[k] or 0) + 1
     else
@@ -159,6 +155,7 @@ if cmd == "emit" then
       local ver = {
         lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = host,
         undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size, native = r.native,
+        blocked_by = blocked and { name = blocked.name, reason = blocked.reason } or nil,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }
       local files = {}

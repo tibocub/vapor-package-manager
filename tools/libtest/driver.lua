@@ -21,7 +21,22 @@ cfg:close()
 local out = io.open(("%s/results/%s.tsv"):format(OUT, name), "w")
 local function line(mod, a, b) out:write(("%s\t%s\t%s\t%s\n"):format(name, mod, a, b)); out:flush() end
 
-local o, code = sh(("cd %s && timeout 120 %s %s --config=%s -y -g install %s"):format(q(root .. "/proj"), q(VLR), q(vpm), q(root .. "/config.lua"), q(name)))
+-- Installing a C rock compiles third-party source, so it happens in a sandbox too: network (the index and luarocks.org), a read-only system, only /w (this package's scratch folder) writable.
+-- Pure rocks only download files and stay outside, as before.
+local o, code
+if rec.native then
+  local cfgw = io.open(root .. "/config.lua", "w")
+  cfgw:write(("return {libdir='/w/lib', appdir='/w/apps', bindir='/w/bin', index=%q, reserve=0, profile='full', keys={%q}}\n"):format(INDEX, KEYS))
+  cfgw:close()
+  local cmd = "cd /w/proj && ulimit -v 4194304 -t 150 -f 200000 2>/dev/null; exec timeout 170 /vlr /vpm/bin/vpm.lua --config=/w/config.lua -y -g install " .. q(name)
+  local full = ("bwrap --unshare-all --share-net --die-with-parent --new-session --clearenv --setenv HOME /tmp --setenv PATH /usr/bin:/bin --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 "
+    .. "--symlink usr/bin /bin --symlink usr/sbin /sbin --ro-bind /etc/pki /etc/pki --ro-bind-try /etc/alternatives /etc/alternatives --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf "
+    .. "--ro-bind %s /vlr --ro-bind %s /vpm --bind %s /w --tmpfs /tmp --proc /proc --dev /dev --chdir /w/proj sh -c %s"):format(q(VLR), q(vpm), q(root), q(cmd))
+  o, code = sh(full)
+else
+  o, code = sh(("cd %s && timeout 120 %s %s --config=%s -y -g install %s"):format(q(root .. "/proj"), q(VLR), q(vpm), q(root .. "/config.lua"), q(name)))
+end
+do local lf = io.open(root .. "/install.log", "w"); if lf then lf:write(o); lf:close() end end
 if code ~= 0 then line("-", "INSTALL-FAILED", (o:gsub("\n.*$", ""):sub(1, 200))); out:close(); return end
 
 local function try(mod, dialect)

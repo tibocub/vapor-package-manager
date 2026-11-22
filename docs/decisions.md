@@ -87,3 +87,16 @@ shadowing (dependency-resolution.md).
   the config makes signatures mandatory, serial floor. See [signing.md](signing.md). vaporOS programs will declare
   the hardware capabilities they need (`requires`); the design waits for the GPIO survey.
 
+
+## 2026-11-22 — direction (user), overrides "filter to pure Lua" above
+
+- vpm is a **general Lua package manager** (vlr + vpm ≈ Python + pip, Node + npm). vlr and vaporOS are platforms it runs well on, not the design centre.
+- **All of luarocks.org is the target**, not a hand-picked subset. Host tags (nvim, openresty, awesome, love, luajit) and non-pure-Lua rocks are **visible by default**, never hidden;
+  they carry notes so someone on a device without a C compiler can tell what will work. Filtering is an explicit choice (`hosts` config / search flags), not a default.
+- vpm detects the machine profile (C compiler, libraries bundled in the runtime, dialect, OS) and filters/annotates from it. It should build native rocks where a compiler exists.
+- Libraries and programs both **system-wide and per-project** (kept; per-project may turn out unneeded on small devices, system-wide is preferred there).
+- **Trust: consume luarocks.org directly** (HTTPS). Our signed index is only a **mirror of hashes and dates** for every rock, so a download over plain HTTP can still be verified. It also carries
+  the vlr compatibility result per rock ("works with vlr": the crawler loads each rock in a sandbox on vlr), which becomes a search filter.
+- Reliability goal: the libraries vpm marks as working must work without tweaking.
+- **Publishing:** use luarocks.org itself (`POST /api/1/bearer/upload`, rockspec as multipart `rockspec_file`, API key from the account page; see https://luarocks.org/docs/api) unless a feature needs our own.
+- A lockfile (exact versions + hashes) is wanted if it is cheap.

@@ -13,9 +13,13 @@ end
 
 local ix = new()
 assert(ix:resolver_view("plain"), "an ordinary package is offered")
-assert(ix:resolver_view("ffi-thing") == nil and ix.hidden["ffi-thing"] == "luajit", "a LuaJIT-only package is hidden and says why")
+assert(ix:resolver_view("ffi-thing"), "host-specific packages are visible by default")
+assert(ix:resolver_view("mixed").versions["1.0-1"] and ix.hidden == nil, "all versions, nothing hidden")
+
+ix = new({})   -- an explicit (empty) list of hosts filters
+assert(ix:resolver_view("ffi-thing") == nil and ix.hidden["ffi-thing"] == "luajit", "filtered: hidden and says why")
 local v = ix:resolver_view("mixed")
-assert(v and v.versions["0.9-1"] and not v.versions["1.0-1"], "only the versions that fit this host are offered")
+assert(v and v.versions["0.9-1"] and not v.versions["1.0-1"], "only the versions that fit are offered")
 assert(ix:resolver_view("nope") == nil and ix.hidden["nope"] == nil, "unknown is not 'hidden'")
 
 ix = new({ "luajit", "nvim" })

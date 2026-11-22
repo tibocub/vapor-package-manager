@@ -114,6 +114,6 @@ or any web server); a second mirror is a copy of the directory. Nothing runs on 
   (`<root>/blobs/aa/<sha256>`, root = index base without `/index/v1`). The signed package file covers the hash, and every file is hash-checked, so the host needs no trust.
   The first full run: 231 rocks, 4,245 blobs, 141 MB (some rocks ship large data files: a size policy for the index is still to decide).
 - **Host tags:** `emit` tags a rock `host = "luajit" | "nvim" | "openresty" | "awesome" | "love"` from the filter's tag or what its code requires (`ffi`/`jit`, `vim`, `ngx`/`resty`/`kong`,
-  `awful`/`gears`/..., `love`). vpm hides tagged versions unless the config says `hosts = { "luajit" }` etc.; the error then names the host.
+  `awful`/`gears`/..., `love`). vpm shows tagged versions with a note (changed 2026-11-22); a config `hosts = { ... }` filters to those hosts and the error then names the host.
 - **Retries:** the installer repeats a download after 429, 5xx, 408/425 or a network timeout (up to 4 attempts, waits 1, 3, 9 s plus jitter), each attempt with a fresh file and hash.
   Certificate failures and 404 are never retried. Shortcut: `Retry-After` is ignored.

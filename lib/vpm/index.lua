@@ -11,8 +11,8 @@ local function shard(name) return (name:sub(1, 2):lower():gsub("[^%w]", "_")) en
 -- FILE.sig from one of them (docs/signing.md). o.verify(sig, msg, key) -> bool is vsign.verify on a device.
 -- o.serial_file remembers the highest meta serial seen, so an older (rolled-back) index is refused.
 function M.new(o)
-  local hosts = {}
-  for _, h in ipairs(o.hosts or {}) do hosts[h] = true end
+  local hosts
+  if o.hosts then hosts = {}; for _, h in ipairs(o.hosts) do hosts[h] = true end end
   return setmetatable({ hosts = hosts, base = o.base:gsub("/$", ""), transport = o.transport, decode = o.decode, cache = {},
                         keys = o.keys, verify = o.verify, serial_file = o.serial_file }, I)
 end
@@ -87,14 +87,14 @@ function I:package(name)
 end
 
 -- the view the resolver wants: { versions = { [v] = { deps = {...}, size = n } } }
--- A version written for a host application or another Lua (m.host: "luajit", "nvim", "openresty", "awesome", "love") is hidden unless o.hosts allows it; a package with
--- nothing left is "not available here" (self.hidden[name] = host), not "not in the index".
+-- A version written for a host application or another Lua (m.host: "luajit", "nvim", "openresty", "awesome", "love") is shown with a note by default. Only when the config
+-- lists hosts (o.hosts) is the rest filtered out; a package with nothing left is "not available here" (self.hidden[name] = host), not "not in the index".
 function I:resolver_view(name)
   local doc = self:package(name)
   if not doc then return nil end
   local vs, any, hidden = {}, false, nil
   for v, m in pairs(doc.versions) do
-    if m.host and not (self.hosts or {})[m.host] then
+    if m.host and self.hosts and not self.hosts[m.host] then
       hidden = hidden or m.host
     else
       vs[v] = { deps = m.deps or {}, size = m.size }

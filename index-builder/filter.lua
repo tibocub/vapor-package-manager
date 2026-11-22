@@ -1,4 +1,4 @@
--- The pure-Lua filter (docs/pure-lua-filter.md). check() looks at ONE evaluated rockspec; closure() applies
+-- The rockspec filter (docs/pure-lua-filter.md; since 2026-11-22 native code is classified, not rejected). check() looks at ONE evaluated rockspec; closure() applies
 -- rule 7 (dependencies must be accepted or provided by the firmware) over the whole set.
 -- Every rejection has a short reason code so results can be counted and explained.
 
@@ -18,23 +18,6 @@ local LUA = V.parse("5.4")
 
 local function lua_ok(constraints)
   return V.satisfies(LUA, constraints)
-end
-
--- every string reachable in a `modules` value (string | list | {sources=..., ...})
-local function native_in(v)
-  if type(v) == "string" then return not v:match("%.lua$") end
-  if type(v) == "table" then
-    for k, x in pairs(v) do
-      if type(x) == "string" and (type(k) == "number" or k == "sources") then
-        if not x:match("%.lua$") then return true end
-      elseif type(x) == "table" and native_in(x) then
-        return true
-      end
-    end
-    -- {libraries=, defines=, incdirs=, libdirs=} without sources is still a native module description
-    if v.libraries or v.defines or v.incdirs or v.libdirs then return true end
-  end
-  return false
 end
 
 -- Rule 11 (a TAG, not a rejection): code written for a host application (an editor, a game engine, a web
@@ -64,23 +47,8 @@ function M.check(rs)
   if type(rs.package) ~= "string" or type(rs.version) ~= "string" then return false, "no-package-or-version" end
   if type(rs.source) ~= "table" or type(rs.source.url) ~= "string" then return false, "no-source-url" end
 
-  local build = rs.build or {}
-  local btype = build.type or "builtin"
-  if btype == "module" then btype = "builtin" end
-  if btype ~= "builtin" and btype ~= "none" then return false, "build-type:" .. tostring(btype) end
-
-  if rs.external_dependencies and next(rs.external_dependencies) then return false, "external-deps" end
-  if build.libraries or build.defines or build.incdirs or build.libdirs then return false, "native-flags" end
-  if build.install and build.install.lib and next(build.install.lib) then return false, "install-lib" end
-
-  local function scan(b)
-    if type(b) ~= "table" then return false end
-    for _, v in pairs(b.modules or {}) do if native_in(v) then return true end end
-    if b.libraries or b.defines or b.incdirs or b.libdirs then return true end
-    return false
-  end
-  if scan(build) then return false, "native-source" end
-  for _, p in pairs(build.platforms or {}) do if scan(p) then return false, "native-source" end end
+  -- Native code is not a reason to reject (2026-11-22): classify.lua says what building needs and the index records it.
+  local native = require("classify").classify(rs)
 
   local deps = {}
   for _, s in ipairs(rs.dependencies or {}) do
@@ -92,7 +60,7 @@ function M.check(rs)
       deps[#deps + 1] = d
     end
   end
-  return true, nil, { deps = deps, host = host_api(rs, deps) }
+  return true, nil, { deps = deps, host = host_api(rs, deps), native = native }
 end
 
 -- checked: name -> { ok, reason, deps }. Returns status, root:

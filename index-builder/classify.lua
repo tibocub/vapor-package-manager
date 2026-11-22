@@ -92,7 +92,7 @@ function M.classify(rs, tree)
     for k in pairs(langs) do if k:sub(1, 8) == "unknown:" then langs[k] = nil end end
     opaque = next(langs) == nil
     if opaque and not set.prebuilt and #external == 0 and not (build.libraries or build.defines or build.incdirs or build.libdirs) then
-      return { native = "build", build = btype }     -- a build step (make, command, a plugin backend) but no compiled source anywhere in the tree
+      return { native = "build", build = btype, build_deps = rs.build_dependencies }     -- a build step (make, command, a plugin backend) but no compiled source anywhere in the tree
     end
   end
 
@@ -100,7 +100,12 @@ function M.classify(rs, tree)
   for l in pairs(langs) do list[#list + 1] = l end
   table.sort(list)
   local only_c = not opaque and #list > 0 and #list == 1 and list[1] == "c"
+  local bdeps
+  for _, d in ipairs(type(rs.build_dependencies) == "table" and rs.build_dependencies or {}) do
+    if type(d) == "string" then bdeps = bdeps or {}; bdeps[#bdeps + 1] = d end
+  end
   return {
+    build_deps = bdeps,   -- rocks that must be installed to build this one (a build backend such as luarocks-build-luke)
     native = only_c and "c" or "other",
     langs = list, build = btype, external = #external > 0 and external or nil,
     prebuilt = set.prebuilt or nil,

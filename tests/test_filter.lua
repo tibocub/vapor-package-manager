@@ -23,16 +23,12 @@ accepts(spec('dependencies={"lua>=5.1, <5.5"}'))
 accepts(spec('build={install={bin={tool="bin/tool.lua"}}}'))
 accepts(spec('if true then build={modules={demo="demo.lua"}} end'))             -- rockspecs may contain logic
 
+-- native rocks are accepted and classified (classify.lua has the details)
+local function nat(text) local rs = assert(sandbox.load(text, "t")); local ok, _, info = filter.check(rs); assert(ok); return info.native.native end
+assert(nat(spec('build={type="make"}')) == "other" and nat(spec('build={modules={demo="src/demo.c"}}')) == "c")
+assert(nat(spec('external_dependencies={OPENSSL={header="openssl/ssl.h"}}')) == "other" and nat(spec('build={modules={demo="demo.lua"}}')) == false)
+
 -- rejected, one rule each
-rejects(spec('build={type="make"}'), "build-type:make")
-rejects(spec('build={type="cmake"}'), "build-type:cmake")
-rejects(spec('build={modules={demo={sources={"demo.c"}}}}'), "native-source")
-rejects(spec('build={modules={demo="src/demo.c"}}'), "native-source")
-rejects(spec('build={modules={demo={sources={"a.lua","b.cpp"}}}}'), "native-source")
-rejects(spec('build={platforms={unix={modules={demo="demo.c"}}}}'), "native-source")
-rejects(spec('external_dependencies={OPENSSL={header="openssl/ssl.h"}}'), "external-deps")
-rejects(spec('build={libraries={"m"}}'), "native-flags")
-rejects(spec('build={install={lib={demo="demo.so"}}}'), "install-lib")
 rejects(spec('dependencies={"lua >= 5.1, < 5.4"}'), "lua-version")
 rejects(spec('dependencies={"lua ~> 5.1"}'), "lua-version")                       -- LuaRocks prefix match: 5.1.x only
 rejects('package="demo"\nversion="1"\n', "no-source-url")
@@ -53,14 +49,15 @@ local set = {
   needsgood = chk(spec('dependencies={"good"}')),
   native = chk(spec('build={type="make"}')),
   needsnative = chk(spec('dependencies={"native"}')),
-  deep   = chk(spec('dependencies={"needsnative"}')),
+  nolua = chk(spec('dependencies={"lua >= 5.1, < 5.4"}')),
+  deep   = chk(spec('dependencies={"nolua"}')),
   oldprov = chk(spec('dependencies={"lpeg < 1.0"}')),   -- firmware has lpeg 1.1.0
   missing = chk(spec('dependencies={"nosuchrock"}')),
 }
 local status, root = filter.closure(set)
 assert(status.good == true and status.needsgood == true)
-assert(status.needsnative == "dep" and root.needsnative.name == "native")
-assert(status.deep == "dep" and root.deep.name == "native" and root.deep.reason == "build-type:make")
+assert(status.native == true and status.needsnative == true, "native rocks and their dependents are in the index")
+assert(status.deep == "dep" and root.deep.name == "nolua" and root.deep.reason == "lua-version")
 assert(status.oldprov == "dep" and root.oldprov.reason == "provided-version")
 assert(status.missing == "dep" and root.missing.reason == "not-in-index")
 

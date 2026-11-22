@@ -28,7 +28,26 @@ if cmd == "one" then
   local dir = ("%s/%s-%s"):format(work, name, ver)
   local root, origin = source.fetch(rs, dir)
   if not root then done(origin) end
-  local entry, why = pkg.analyze(rs, root, origin)
+  local entry, why
+  local native = info.native.native and info.native
+  if native then
+    -- a rock that compiles or runs a build step: no file list (vpm builds it from source); the tree tells what language build systems like make or cmake compile
+    local okl, listing = source.run(("cd %s && find . -type f -not -path './.git/*' | head -20000"):format(source.q(root)))
+    local tree = {}
+    for p in (okl and listing or ""):gmatch("[^\n]+") do
+      p = p:gsub("^%./", "")
+      if not (p:find("^tests?/") or p:find("^spec/") or p:find("^docs?/") or p:find("^examples?/")) then tree[#tree + 1] = p end
+    end
+    native = require("classify").classify(rs, tree)
+    entry = { files = {}, bin = {}, modules = {}, requires = {} }
+    local bt = (rs.build or {}).type
+    if bt == nil or bt == "builtin" or bt == "module" then   -- other build types do not use build.modules for module names
+      for m in pairs((rs.build or {}).modules or {}) do if type(m) == "string" then entry.modules[#entry.modules + 1] = m end end
+    end
+    table.sort(entry.modules)
+  else
+    entry, why = pkg.analyze(rs, root, origin)
+  end
   -- files that have no stable per-file URL (archives from arbitrary hosts) are kept as content-addressed blobs, served next to the index
   local blobs = os.getenv("VLR_BLOBS")
   if entry and blobs then
@@ -41,6 +60,7 @@ if cmd == "one" then
   end
   source.run("rm -rf " .. source.q(dir))
   if not entry then done(why) end
+  rec.native = native or nil
   rec.host, rec.files, rec.bin, rec.modules, rec.requires, rec.luajit = info.host, entry.files, entry.bin, entry.modules, entry.requires, entry.luajit
   rec.size = entry.size
   rec.deps, rec.lua = {}, nil
@@ -127,7 +147,7 @@ if cmd == "emit" then
       end
       local ver = {
         lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = host,
-        undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size,
+        undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size, native = r.native,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }
       local files = {}

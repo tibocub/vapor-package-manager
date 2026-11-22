@@ -48,7 +48,7 @@ return function(ctx, args)
     local e = found[i]
     local tags = { e.c or "pure" }
     if e.h then tags[#tags + 1] = "host:" .. e.h end
-    if e.w == "ok" then tags[#tags + 1] = "vlr:ok" elseif e.w == "fail" then tags[#tags + 1] = "vlr:fails" end
+    if e.w == "ok" then tags[#tags + 1] = "vlr:ok" elseif e.w == "partial" then tags[#tags + 1] = "vlr:partial" elseif e.w == "fail" then tags[#tags + 1] = "vlr:fails" end
     ctx.out("%s %s  [%s]%s", e.n, e.v or "", table.concat(tags, " "), e.s and ("  " .. e.s) or "")
   end
   if #found == 0 then ctx.out("nothing found") return 1 end

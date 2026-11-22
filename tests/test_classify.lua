@@ -39,4 +39,24 @@ assert(c('build={type="command", build_command="x"}', { "a.lua" }).native == "bu
 assert(c('build={type="command", build_command="x"}').native == "other" and c('build={type="command", build_command="x"}').unknown_language, "command without a tree: unknown")
 r = c('build_dependencies={"luarocks-build-luke >= 0.3"}\nbuild={type="luke"}', { "a.c" })
 assert(r.native == "c" and r.build_deps[1] == "luarocks-build-luke >= 0.3" and r.build == "luke", "a build backend is recorded")
+-- the compile plan
+local plan = require("classify").plan
+local function pl(body) return plan(spec(body)) end
+local pp = pl('build={modules={lfs={sources={"src/lfs.c"},defines={"X=1"},incdirs={"$(LUA_INCDIR)","inc"},libdirs={"$(LUA_LIBDIR)"}}, ["m.util"]="lua/util.lua"}}')
+assert(pp and #pp.modules == 1 and pp.modules[1].name == "lfs" and pp.modules[1].sources[1] == "src/lfs.c" and pp.modules[1].defines[1] == "X=1", "plan")
+assert(#pp.modules[1].incdirs == 1 and pp.modules[1].incdirs[1] == "inc" and pp.modules[1].libdirs == nil, "LUA_INCDIR/LUA_LIBDIR are ours")
+pp = pl('build={modules={z="z.c"}}\nexternal_dependencies={ZLIB={header="zlib.h",library="z"}}')
+assert(pp.modules[1].sources[1] == "z.c" and pp.external.ZLIB.header == "zlib.h" and pp.external.ZLIB.library == "z")
+pp = pl('build={modules={a={"a.c","b.c"}}}')
+assert(#pp.modules[1].sources == 2, "array-style sources")
+local function noplan(body, why) local r, reason = pl(body); assert(r == nil and reason:find(why, 1, true), tostring(reason)) end
+noplan('build={type="make"}', "build type make")
+noplan('build={modules={a="a.cpp"}}', "source a.cpp")
+noplan('build={modules={a={sources={"a.c","b.lua"}}}}', "mixed")
+noplan('build={modules={a="a.c"},platforms={linux={modules={a="b.c"}}}}', "platform-specific")
+noplan('build={modules={a="a.lua"}}', "no C modules")
+noplan('build={}', "no modules table")
+assert(pl('build={modules={a="a.c"},platforms={win32={modules={a="w.c"}}}}'), "win32-only overrides do not matter here")
+local vv = require("vpm.native").validate(pl('build={modules={a={sources={"a.c"},libraries={"m"}}}}'))
+assert(vv, "a plan from the builder passes the client-side validation")
 print("classify ok")

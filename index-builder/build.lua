@@ -26,7 +26,13 @@ if cmd == "one" then
   local ok, reason, info = filter.check(rs)
   if not ok then done(reason) end
   local dir = ("%s/%s-%s"):format(work, name, ver)
-  local root, origin = source.fetch(rs, dir)
+  local root, origin
+  if info.native.native then
+    -- a rock that has to be built: its source rock is the one source (its hash is in the index), so plan and tree are the ones vpm will unpack
+    root, origin = source.fetch_srcrock(name, ver, rs, dir)
+    if not root then source.run("rm -rf " .. source.q(dir)); root, origin = nil, nil end
+  end
+  if not root then root, origin = source.fetch(rs, dir) end
   if not root and (origin == "source-download" or origin == "source-ref-missing" or origin == "source-scheme" or origin == "source-extract") then
     source.run("rm -rf " .. source.q(dir))      -- the rock's own source is gone: luarocks.org's copy
     root, origin = source.fetch_srcrock(name, ver, rs, dir)
@@ -57,9 +63,34 @@ if cmd == "one" then
       native = require("classify").classify(rs, tree)
     end
     entry, why = { files = {}, bin = {}, modules = {}, requires = {} }, nil
+    -- C rocks vpm can build: a compile plan (checked against the unpacked source) and the Lua files of the rock as ordinary files
+    if native.native == "c" and native.build == "builtin" and origin.type == "luarocks" then
+      local cplan, preason = require("classify").plan(rs)
+      if cplan then
+        local okv, verr = require("vpm.native").validate(cplan)
+        if not okv then cplan, preason = nil, verr end
+      end
+      if cplan then
+        for _, m in ipairs(cplan.modules) do
+          for _, srcf in ipairs(m.sources) do
+            if not source.run("test -f " .. source.q(root .. "/" .. srcf) .. " -a ! -L " .. source.q(root .. "/" .. srcf)) then cplan, preason = nil, "missing source " .. srcf; break end
+          end
+          if not cplan then break end
+        end
+      end
+      if cplan then
+        local lentry, lwhy = pkg.analyze(rs, root, origin, { skip_native = true })
+        if lentry then entry = lentry else cplan, preason = nil, "lua part: " .. tostring(lwhy) end
+      end
+      native.plan, native.srcdir, native.no_plan_reason = cplan, rs.source and rs.source.dir or nil, (not cplan) and preason or nil
+    elseif native.native == "c" and native.build == "builtin" then
+      native.no_plan_reason = "no source rock on luarocks.org"
+    end
     local bt = (rs.build or {}).type
     if bt == nil or bt == "builtin" or bt == "module" then   -- other build types do not use build.modules for module names
-      for m in pairs((rs.build or {}).modules or {}) do if type(m) == "string" then entry.modules[#entry.modules + 1] = m end end
+      local seen = {}
+      for _, m in ipairs(entry.modules) do seen[m] = true end
+      for m in pairs((rs.build or {}).modules or {}) do if type(m) == "string" and not seen[m] then entry.modules[#entry.modules + 1] = m end end
     end
     table.sort(entry.modules)
   end
@@ -119,7 +150,9 @@ end
 if cmd == "emit" then
   local manifest, evaluate = require("manifest"), require("evaluate")
   local mpath, specdir, recdir, out = arg[2], arg[3], arg[4], arg[5]
-  local mirrordir = os.getenv("VLR_MIRROR")      -- the `mirror` stage's output, merged into each entry as `luarocks`
+  local mirrordir = os.getenv("VLR_MIRROR")
+  local compatdir = os.getenv("VLR_COMPAT")      -- libtest's per-package results (tools/libtest/summarize.lua with COMPAT_OUT), merged as `vlr`
+  local catalogue = {}      -- the `mirror` stage's output, merged into each entry as `luarocks`
   local repo = manifest.load(mpath)
   local _, checked = evaluate(repo, specdir)
 
@@ -187,7 +220,15 @@ if cmd == "emit" then
         luarocks = (function()
           local f = mirrordir and loadfile(("%s/%s.lua"):format(mirrordir, name))
           local m = f and f()
-          if m and (m.rockspec or m.src) then return { rockspec = m.rockspec, src = m.src, date = (m.rockspec or m.src or {}).date } end
+          if not (m and (m.rockspec or m.src)) then return nil end
+          local src = m.src and { sha256 = m.src.sha256, size = m.src.size, date = m.src.date, url = ("https://luarocks.org/%s-%s.src.rock"):format(name, r.version) } or nil
+          -- a C rock's plan was made against the source rock the builder unpacked: that hash is the one vpm must see
+          if src and r.native and r.native.plan and r.origin and r.origin.type == "luarocks" then src.sha256, src.size = r.origin.sha256, r.origin.size or src.size end
+          return { rockspec = m.rockspec, src = src, date = (m.rockspec or m.src or {}).date }
+        end)(),
+        vlr = (function()
+          local f = compatdir and loadfile(("%s/%s.lua"):format(compatdir, name))
+          return f and f() or nil
         end)(),
         blocked_by = blocked and { name = blocked.name, reason = blocked.reason } or nil,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
@@ -197,6 +238,12 @@ if cmd == "emit" then
         files[dest] = { sha256 = ent.sha256, size = ent.size, url = source.raw_url(r.origin, ent.src) or ("blob:" .. ent.sha256) }
       end
       ver.files = files
+      do   -- one line per package for `vpm search`
+        local cls = r.native and r.native.native or "pure"
+        local w = ver.vlr and (ver.vlr.status == "ok" and "ok" or ver.vlr.status == "fail" and "fail" or ver.vlr.status == "partial" and "partial") or nil
+        catalogue[#catalogue + 1] = json.compact({ n = name, v = r.version, s = ver.summary, c = cls, h = host,
+          b = require("vpm.native").buildable(ver) and 1 or nil, w = w })
+      end
       local kind = next(r.bin) and "app" or "lib"
       local shard = name:sub(1, 2):lower():gsub("[^%w]", "_")
       os.execute("mkdir -p " .. source.q(("%s/index/v1/p/%s"):format(out, shard)))
@@ -206,6 +253,8 @@ if cmd == "emit" then
       if host then hostn = hostn + 1 end
     end
   end
+  table.sort(catalogue)
+  write(out .. "/index/v1/search.jsonl", table.concat(catalogue, "\n") .. "\n")
   if os.getenv("VLR_BLOBS") then os.execute(("mkdir -p %s/blobs && cp -r %s/. %s/blobs/"):format(source.q(out), source.q(os.getenv("VLR_BLOBS")), source.q(out))) end
   write(out .. "/index/v1/meta.json", json.encode({
     format = 1, lua = "5.4", packages = n, built = os.date("!%Y-%m-%d"), serial = os.time(),

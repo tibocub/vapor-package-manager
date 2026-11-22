@@ -22,7 +22,7 @@ local function list(dir, pattern)
 end
 
 -- dest (install path relative to the library dir) -> source path (relative to the source root)
-local function plan(rs, root)
+local function plan(rs, root, opts)
   local build = rs.build or {}
   local files, bin = {}, {}
   local modules = build.modules
@@ -47,13 +47,15 @@ local function plan(rs, root)
   for name, src in pairs(modules or {}) do
     if type(src) == "table" then src = src.sources and (type(src.sources) == "string" and src.sources or src.sources[1]) or src[1] end
     local ext = type(src) == "string" and src:match("%.([^.]+)$")
-    if ext ~= "lua" then return nil, "native-source" end
-    local moddir = module_path(name)
-    if src:match("[^/]*$") == "init.lua" and not name:match("%.init$") then
-      files[moddir .. "/init.lua"] = src
-    else
-      local basename = name:match("([^.]+)$")
-      files[(moddir:match("^(.*)/[^/]*$") and (moddir:match("^(.*)/[^/]*$") .. "/") or "") .. basename .. ".lua"] = src
+    if ext ~= "lua" and not (opts and opts.skip_native) then return nil, "native-source" end
+    if ext == "lua" then
+      local moddir = module_path(name)
+      if src:match("[^/]*$") == "init.lua" and not name:match("%.init$") then
+        files[moddir .. "/init.lua"] = src
+      else
+        local basename = name:match("([^.]+)$")
+        files[(moddir:match("^(.*)/[^/]*$") and (moddir:match("^(.*)/[^/]*$") .. "/") or "") .. basename .. ".lua"] = src
+      end
     end
   end
 
@@ -77,8 +79,8 @@ local function requires_in(text, set)
   for m in text:gmatch("require%s*%(?%s*[\"']([%w_%.%-]+)[\"']") do set[m] = true end
 end
 
-function M.analyze(rs, root, origin)
-  local files, bin = plan(rs, root)
+function M.analyze(rs, root, origin, opts)
+  local files, bin = plan(rs, root, opts)
   if not files then return nil, bin end            -- bin holds the reason here
 
   local entry = { files = {}, bin = {}, modules = {}, requires = {} }

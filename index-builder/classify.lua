@@ -113,4 +113,65 @@ function M.classify(rs, tree)
   }
 end
 
+-- The compile plan vpm follows for a C rock (lib/vpm/native.lua documents the format), or nil, reason when it is not safe to guess:
+-- only the builtin build type, only .c sources, no unix/linux/macosx-specific module overrides (win32/windows ones do not apply here), at least one C module.
+-- Lua files of the same rock are installed as ordinary files (package_analysis with skip_native).
+local UNIX_PLATFORMS = { unix = true, linux = true, macosx = true, bsd = true, freebsd = true, openbsd = true, netbsd = true, cygwin = false }
+
+function M.plan(rs)
+  local build = type(rs.build) == "table" and rs.build or {}
+  local btype = build.type or "builtin"
+  if btype ~= "builtin" and btype ~= "module" then return nil, "build type " .. tostring(btype) end
+  if type(build.modules) ~= "table" then return nil, "no modules table" end
+  for pname, p in pairs(build.platforms or {}) do
+    if UNIX_PLATFORMS[pname] and type(p) == "table" and (p.modules or p.libraries or p.defines) then return nil, "platform-specific build for " .. pname end
+  end
+  local mods = {}
+  local names = {}
+  for name in pairs(build.modules) do names[#names + 1] = name end
+  table.sort(names, function(a, b) return tostring(a) < tostring(b) end)
+  for _, name in ipairs(names) do
+    local v = build.modules[name]
+    if type(name) ~= "string" then return nil, "unnamed module" end
+    local srcs, m = {}, { name = name }
+    local function add(x) if type(x) == "string" then srcs[#srcs + 1] = x else return false end return true end
+    if type(v) == "string" then add(v)
+    elseif type(v) == "table" then
+      for _, x in ipairs(v) do if not add(x) then return nil, "bad source in " .. name end end
+      if type(v.sources) == "string" then add(v.sources)
+      elseif type(v.sources) == "table" then for _, x in ipairs(v.sources) do if not add(x) then return nil, "bad source in " .. name end end end
+      for _, key in ipairs{ "defines", "incdirs", "libdirs", "libraries" } do
+        if v[key] ~= nil then
+          if type(v[key]) ~= "table" then return nil, "bad " .. key .. " in " .. name end
+          local list = {}
+          for _, x in ipairs(v[key]) do
+            if type(x) ~= "string" then return nil, "bad " .. key .. " in " .. name end
+            if not (key == "incdirs" and x == "$(LUA_INCDIR)") and not (key == "libdirs" and x == "$(LUA_LIBDIR)") then list[#list + 1] = x end   -- our headers are always on the include path
+          end
+          if #list > 0 then m[key] = list end
+        end
+      end
+    else return nil, "bad module " .. name end
+    local c = {}
+    for _, x in ipairs(srcs) do
+      local e = x:match("%.([%w_]+)$")
+      if e == "c" then c[#c + 1] = x elseif e ~= "lua" then return nil, "source " .. x end
+    end
+    if #c > 0 then
+      if #c ~= #srcs then return nil, "mixed Lua and C in " .. name end
+      m.sources = c
+      mods[#mods + 1] = m
+    end
+  end
+  if #mods == 0 then return nil, "no C modules" end
+  local plan = { modules = mods }
+  for ename, e in pairs(rs.external_dependencies or {}) do
+    if type(ename) == "string" and type(e) == "table" then
+      plan.external = plan.external or {}
+      plan.external[ename] = { header = type(e.header) == "string" and e.header or nil, library = type(e.library) == "string" and e.library or nil }
+    end
+  end
+  return plan
+end
+
 return M

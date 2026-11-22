@@ -58,6 +58,23 @@ function I:meta()
   return self.meta_doc
 end
 
+-- The catalogue for `vpm search`: index/v1/search.jsonl, one JSON object per line { n = name, v = version, s = summary, c = "pure"|"c"|"build"|"other", h = host, w = "ok"|"fail" }.
+-- Signature-checked like every index file. Returns a list, or nil, status, err.
+function I:catalogue()
+  if self.keys then
+    local _, mstatus, merr = self:meta()
+    if self.meta_doc == nil then self.failed = self.failed or merr; return nil, mstatus, merr end
+  end
+  local body, status, err = self:fetch("search.jsonl")
+  if not body then self.failed = self.failed or err or ("index error " .. tostring(status)); return nil, status, err end
+  local list = {}
+  for line in body:gmatch("[^\n]+") do
+    local ok, e = pcall(self.decode, line)
+    if ok and type(e) == "table" and type(e.n) == "string" then list[#list + 1] = e end
+  end
+  return list
+end
+
 -- a package that comes from a directory instead of the index (vpm install ./dir)
 function I:add_local(doc) self.cache[doc.name] = doc end
 

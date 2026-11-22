@@ -7,7 +7,7 @@ local mirror, sys, proj = base .. "/mirror", base .. "/sys", base .. "/proj"
 assert(fs.mkdirp(proj))
 local publish = require("mirror").new(mirror)
 publish{
-  ansicolors = { versions = { ["1.0-1"] = { files = { ["ansicolors.lua"] = "return 'colors'" }, summary = "ANSI colors" } } },
+  ansicolors = { versions = { ["1.0-1"] = { files = { ["ansicolors.lua"] = "return 'colors'" }, summary = "ANSI colors", works = "ok" } } },
   lpeglike = { versions = { ["1.0-1"] = { files = { ["lpeglike.lua"] = "return 'l'" } } } },
   mathx = { versions = { ["1.0-1"] = { files = { ["mathx.lua"] = "return 1" }, deps = { "lpeglike >= 1.0" } } } },
   zlibish = { versions = { ["1.0-1"] = { files = {}, native = { native = "c", langs = { "c" }, external = { "ZLIB" }, build = "builtin" } } } },
@@ -58,6 +58,25 @@ assert(code == 4 and has(err, "needs a build (a C compiler, system libraries ZLI
 code = vpm({ "install", "-g", "nvimthing" })
 assert(code == 0 and fs.exists(sys .. "/lib/nvimthing.lua"), "host-specific rocks install by default")
 vpm({ "remove", "-g", "nvimthing" })
+
+-- search: everything is listed, flags narrow it
+code, out = vpm({ "search", "ansi" })
+assert(code == 0 and has(out, "ansicolors 1.0-1  [pure vlr:ok]  ANSI colors"), out)
+code, out = vpm({ "search" })
+assert(has(out, "zlibish") and has(out, "nvimthing") and has(out, "[c]") and has(out, "host:nvim"), "all shown by default: " .. out)
+code, out = vpm({ "search", "--pure" })
+assert(has(out, "ansicolors") and not has(out, "zlibish"), out)
+code, out = vpm({ "search", "--native=c" })
+assert(has(out, "zlibish") and has(out, "ansicolors"), out)
+code, out = vpm({ "search", "--no-host" })
+assert(has(out, "ansicolors") and not has(out, "nvimthing"), out)
+code, out = vpm({ "search", "--host=nvim" })
+assert(has(out, "nvimthing") and not has(out, "ansicolors"), out)
+code, out = vpm({ "search", "--works" })
+assert(has(out, "ansicolors") and not has(out, "nvimthing"), out)
+code, out = vpm({ "search", "no-such-thing-xyz" })
+assert(code == 1 and has(out, "nothing found"))
+assert(select(1, vpm({ "search", "--native=sideways" })) == 2)
 
 -- 3. list, world, why
 code, out = vpm({ "ls", "-g" })

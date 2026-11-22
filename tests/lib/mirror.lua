@@ -16,12 +16,21 @@ function M.new(mirror)
           files[dest] = { sha256 = m.badhash and string.rep("0", 64) or hash.hex(content), size = #content, url = "file://" .. path }
           size = size + #content
         end
-        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary, native = m.native, host = m.host }
+        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary, native = m.native, host = m.host, works = m.works }
       end
       local shard = name:sub(1, 2):lower()
       assert(fs.mkdirp(mirror .. "/index/v1/p/" .. shard))
       assert(fs.write(mirror .. "/index/v1/p/" .. shard .. "/" .. name .. ".json", json.encode(doc)))
     end
+    local lines = {}
+    for name, p in pairs(packages) do
+      local newest
+      for v in pairs(p.versions) do newest = v end
+      local m = p.versions[newest]
+      lines[#lines + 1] = json.compact({ n = name, v = newest, s = m.summary, c = m.native and m.native.native or "pure", h = m.host, w = m.works })
+    end
+    table.sort(lines)
+    assert(fs.write(mirror .. "/index/v1/search.jsonl", table.concat(lines, "\n") .. "\n"))
     assert(fs.write(mirror .. "/index/v1/meta.json", json.encode({ format = 1, lua = "5.4", provided = { lpeg = "1.1.0" } })))
   end
 end

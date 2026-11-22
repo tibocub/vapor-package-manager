@@ -34,6 +34,23 @@ function M.encode(v, indent)
   error("cannot encode " .. t)
 end
 
+-- one line, no spaces (JSON-lines files such as the search catalogue)
+function M.compact(v)
+  local t = type(v)
+  if t ~= "table" then return M.encode(v) end
+  if next(v) == nil then return "[]" end
+  local out = {}
+  if isarray(v) then
+    for i, x in ipairs(v) do out[i] = M.compact(x) end
+    return "[" .. table.concat(out, ",") .. "]"
+  end
+  local keys = {}
+  for k in pairs(v) do keys[#keys + 1] = tostring(k) end
+  table.sort(keys)
+  for i, k in ipairs(keys) do out[i] = str(k) .. ":" .. M.compact(v[k]) end
+  return "{" .. table.concat(out, ",") .. "}"
+end
+
 -- Lua-table serialisation for the builder's own intermediate records (read back with dofile).
 function M.lua_literal(v, indent)
   indent = indent or ""

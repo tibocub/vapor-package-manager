@@ -100,3 +100,14 @@ shadowing (dependency-resolution.md).
 - Reliability goal: the libraries vpm marks as working must work without tweaking.
 - **Publishing:** use luarocks.org itself (`POST /api/1/bearer/upload`, rockspec as multipart `rockspec_file`, API key from the account page; see https://luarocks.org/docs/api) unless a feature needs our own.
 - A lockfile (exact versions + hashes) is wanted if it is cheap.
+
+## 2026-11-22 (later): C rocks built from the signed index, bundling, compat results
+
+- **Builder:** a C rock with the `builtin` build type gets a compile plan (`native.plan`, from `classify.plan`) checked against the **source rock** it was derived from (the one tree vpm will unpack); its hash and
+  size are in `luarocks.src`. Other C rocks (make, cmake, plugins) are listed with `no_plan_reason = "build type X"`. Of 811 C rocks in the crawl, 352 are buildable; 113 have no source rock on luarocks.org.
+- **Sandbox:** third-party C is compiled in one bubblewrap (network for the download, read-only system, one writable folder) and loaded in a second (no network). tools/libtest/driver.lua does both.
+- **Lua 5.1 C API:** many old rocks need `luaL_register`, `luaL_reg`, `lua_objlen`, `luaL_checkint`, `lua_equal`... `lauxlib.h` provides them (patches/lua-api51.patch in vlr); functions that were
+  functions in 5.1 are weak definitions, so a rock carrying its own copy still compiles. Loading rate of buildable C rocks went from 164 to 171 of 352; most of the rest need system libraries the sandbox lacks (reported as untested, not failed).
+- **Bundling:** `vpm bundle PKG... --dir=D` + vlr `make CONF_EXTRA=D/bundle.conf` compiles C rocks into the runtime from the same plan (lbase64, lalarm, uname checked). Not bundled: rocks needing system libraries (other than m, dl, pthread) and a rock's Lua files.
+- **Publishing:** researched, see publishing.md; waits on the user for a key and a decision about `source.url`.
+- Open: a real C rock *with* a system library (e.g. zlib) from the real index; index hosting; make/cmake builds.

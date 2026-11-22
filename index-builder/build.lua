@@ -214,9 +214,16 @@ if cmd == "emit" then
           if h then host = h; break end
         end
       end
+      local nat = r.native
+      if nat and nat.native == "c" and not nat.plan and not nat.no_plan_reason then   -- C by its source tree but not a builtin build: vpm builds only builtin ones
+        local copy = {}
+        for k, v in pairs(nat) do copy[k] = v end
+        copy.no_plan_reason = "build type " .. tostring(nat.build)
+        nat = copy
+      end
       local ver = {
         lua = r.lua, deps = r.deps, files = r.files, bin = r.bin, modules = r.modules, host = host,
-        undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size, native = r.native,
+        undeclared_requires = #warn > 0 and warn or nil, luajit = r.luajit, size = r.size, native = nat,
         luarocks = (function()
           local f = mirrordir and loadfile(("%s/%s.lua"):format(mirrordir, name))
           local m = f and f()

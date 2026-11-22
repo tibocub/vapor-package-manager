@@ -102,7 +102,9 @@ function M.fetch(rs, dir)
   if not gurl then return nil, "source-scheme" end
   local work = dir .. "/repo"
   local ref = src.tag or src.branch
-  local cmd = "GIT_TERMINAL_PROMPT=0 timeout 120 git -c protocol.allow=never -c protocol.https.allow=always"
+  -- never ask for credentials: no prompt, no askpass program, no credential helper, and none of the user's or the system's git configuration (a private or moved repo must just fail)
+  local cmd = "GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false SSH_ASKPASS=/bin/false GCM_INTERACTIVE=never GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1"
+              .. " timeout 120 git -c credential.helper= -c core.askPass= -c protocol.allow=never -c protocol.https.allow=always"
               .. " clone -q --depth 1 --no-tags" .. (ref and (" --branch " .. q(ref)) or "") .. " " .. q(gurl) .. " " .. q(work)
   if not run(cmd) then return nil, ref and "source-ref-missing" or "source-download" end
   local okc, commit = run("git -C " .. q(work) .. " rev-parse HEAD")

@@ -16,7 +16,7 @@ function M.new(mirror)
           files[dest] = { sha256 = m.badhash and string.rep("0", 64) or hash.hex(content), size = #content, url = "file://" .. path }
           size = size + #content
         end
-        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary }
+        doc.versions[v] = { deps = m.deps or {}, files = files, bin = m.bin or {}, size = size, summary = m.summary, native = m.native, host = m.host }
       end
       local shard = name:sub(1, 2):lower()
       assert(fs.mkdirp(mirror .. "/index/v1/p/" .. shard))

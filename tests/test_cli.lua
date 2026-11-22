@@ -10,6 +10,8 @@ publish{
   ansicolors = { versions = { ["1.0-1"] = { files = { ["ansicolors.lua"] = "return 'colors'" }, summary = "ANSI colors" } } },
   lpeglike = { versions = { ["1.0-1"] = { files = { ["lpeglike.lua"] = "return 'l'" } } } },
   mathx = { versions = { ["1.0-1"] = { files = { ["mathx.lua"] = "return 1" }, deps = { "lpeglike >= 1.0" } } } },
+  zlibish = { versions = { ["1.0-1"] = { files = {}, native = { native = "c", langs = { "c" }, external = { "ZLIB" }, build = "builtin" } } } },
+  nvimthing = { versions = { ["1.0-1"] = { files = { ["nvimthing.lua"] = "return 1" }, host = "nvim" } } },
   pk = { versions = { ["1.2-1"] = { files = { ["pk.lua"] = "return '1.2'" } }, ["1.3-1"] = { files = { ["pk.lua"] = "return '1.3'" } } } },
 }
 
@@ -43,6 +45,19 @@ code = vpm({ "install", "-g", "-n", "mathx" })
 assert(code == 0 and not fs.exists(sys .. "/lib/mathx.lua"))             -- dry run
 code, out = vpm({ "install", "-g", "mathx" }, { "" })                    -- Enter = yes
 assert(code == 0 and fs.exists(sys .. "/lib/mathx.lua") and fs.exists(sys .. "/lib/lpeglike.lua"), out)
+
+-- native and host-specific rocks are visible; native ones cannot be built yet
+code, out = vpm({ "info", "zlibish" })
+assert(code == 0 and has(out, "needs a C compiler (c)") and has(out, "system libraries: ZLIB"), out)
+code, out = vpm({ "info", "ansicolors" })
+assert(has(out, "native:    no (pure Lua)"))
+code, out = vpm({ "info", "nvimthing" })
+assert(has(out, "written for nvim"))
+code, out, err = vpm({ "install", "-g", "zlibish" })
+assert(code == 4 and has(err, "needs a build (a C compiler, system libraries ZLIB)") and not fs.exists(sys .. "/lib/zlibish.lua"), err)
+code = vpm({ "install", "-g", "nvimthing" })
+assert(code == 0 and fs.exists(sys .. "/lib/nvimthing.lua"), "host-specific rocks install by default")
+vpm({ "remove", "-g", "nvimthing" })
 
 -- 3. list, world, why
 code, out = vpm({ "ls", "-g" })

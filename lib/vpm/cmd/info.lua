@@ -8,7 +8,7 @@ return function(ctx, args)
   local doc, err = index:package(name)
   if not doc then
     if err then ctx.err("%s", err); return 4 end
-    ctx.out("%s is not in the index (it may be native code, written for a host application, or unknown)", name)
+    ctx.out("%s is not in the index", name)
     return 1
   end
   local vs = {}
@@ -23,6 +23,15 @@ return function(ctx, args)
   if m.license then ctx.out("  license:   %s", m.license) end
   if m.homepage then ctx.out("  homepage:  %s", m.homepage) end
   if m.host then ctx.out("  note:      written for %s", tostring(m.host)) end
+  local n = m.native
+  if n then
+    local what = ({ c = "needs a C compiler", build = "needs a build step", other = "native code" })[n.native] or "native code"
+    ctx.out("  native:    %s%s", what, (n.langs and #n.langs > 0) and (" (" .. table.concat(n.langs, ", ") .. ")") or "")
+    if n.external then ctx.out("             system libraries: %s", table.concat(n.external, ", ")) end
+    if n.build_deps then ctx.out("             build needs: %s", table.concat(n.build_deps, ", ")) end
+  else
+    ctx.out("  native:    no (pure Lua)")
+  end
   for _, scope in ipairs{ "global", "local" } do
     local r = ctx.state(scope):get(name)
     if r then ctx.out("  installed: %s (%s)", r.version, scope) end

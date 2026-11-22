@@ -111,6 +111,12 @@ function I:apply(plan, requested)
       own_cache[a.scope] = own_cache[a.scope] or self.owners(st)
       local own = kind == "lib" and own_cache[a.scope] or {}
       local old = st:get(a.name)
+      if meta.native then   -- shortcut: native rocks are listed and described but cannot be built yet
+        local n = meta.native
+        return fail(4, ("%s %s needs a build (%s%s): vpm cannot build native rocks yet"):format(a.name, a.version,
+          n.native == "c" and "a C compiler" or n.native == "build" and "a build step" or "native code",
+          n.external and (", system libraries " .. table.concat(n.external, ", ")) or ""))
+      end
       local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old }
       local any_existing = false
       for dest, f in pairs(meta.files or {}) do

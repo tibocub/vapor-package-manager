@@ -1,6 +1,7 @@
 -- vpm install [pkg[@ver]...] : resolve, show the plan, ask when it does more than asked, apply.
 local plan_ui = require("vpm.plan")
 local fs = require("vpm.fs")
+local Lock = require("vpm.lock")
 
 local function is_dir_spec(s) return s:match("^%.%.?/") or s:match("^/") or s:match("^file://") or s == "." or s == ".." end
 
@@ -23,16 +24,31 @@ end
 
 return function(ctx, args)
   local requests, requested, fresh = {}, {}, {}
+  local lock, locked
+  local manifest = read_manifest(ctx)
   if #args == 0 then
-    local m = read_manifest(ctx)
-    if not m or not next(m.deps or {}) then
-      ctx.err("nothing to install: name a package, or run in a directory whose vpm.lua lists deps")
-      return 2
+    local lerr
+    lock, lerr = Lock.read(ctx)
+    if lerr then ctx.err("%s (delete it to start over)", lerr); return 1 end
+    local m = manifest
+    if lock and (not m or Lock.same_roots(lock.roots, m.deps or {})) then
+      -- a plain `vpm i` with a lock that still matches vpm.lua: exactly what was locked, no questions asked
+      locked = true
+      local names = {}
+      for n in pairs(lock.packages) do names[#names + 1] = n end
+      table.sort(names)
+      for _, n in ipairs(names) do requests[#requests + 1] = { name = n, constraint = "== " .. lock.packages[n].version } end
+      for n, c in pairs(lock.roots) do requested[n] = c end
+    else
+      if not m or not next(m.deps or {}) then
+        ctx.err("nothing to install: name a package, or run in a directory whose vpm.lua lists deps")
+        return 2
+      end
+      local names = {}
+      for n in pairs(m.deps) do names[#names + 1] = n end
+      table.sort(names)
+      for _, n in ipairs(names) do requests[#requests + 1] = { name = n, constraint = m.deps[n] }; requested[n] = m.deps[n] end
     end
-    local names = {}
-    for n in pairs(m.deps) do names[#names + 1] = n end
-    table.sort(names)
-    for _, n in ipairs(names) do requests[#requests + 1] = { name = n, constraint = m.deps[n] }; requested[n] = m.deps[n] end
   else
     for _, a in ipairs(args) do
       if is_dir_spec(a) then
@@ -70,10 +86,21 @@ return function(ctx, args)
     ctx.err("%s", err); return 3
   end
 
+  if locked then
+    for _, a in ipairs(plan.actions) do
+      local want = lock.packages[a.name]
+      local now = want and want.digest and Lock.index_digest(index, a.name, a.version)
+      if want and want.digest and now ~= want.digest then
+        ctx.err("%s %s: the index holds different files than the lock recorded (vpm-lock.lua); refusing. Delete the lock to accept the new content.", a.name, a.version)
+        return 4
+      end
+    end
+  end
+
   local installs = plan_ui.installs(plan)
   plan_ui.show(ctx, plan)
   if ctx.flags.dry_run then return 0 end
-  if installs > 0 and (plan_ui.needs_prompt(plan, requested, ctx.scope)) and not ctx.flags.yes then
+  if installs > 0 and not locked and (plan_ui.needs_prompt(plan, requested, ctx.scope)) and not ctx.flags.yes then
     ctx.out("Download: %s", ctx.size(plan.download))
     local yes = ctx.ask("Continue?")
     if yes == nil then ctx.err("this needs confirmation and there is no terminal: use -y"); return 1 end
@@ -86,10 +113,16 @@ return function(ctx, args)
   ctx.out(installs == 0 and "nothing to install, everything is already there" or "installed %d package(s)", installs)
 
   if ctx.scope == "local" then
-    if fs.exists(ctx.cwd .. "/vpm.lua") then
-      local resolved = {}
-      for _, a in ipairs(plan.actions) do resolved[a.name] = { version = a.version, scope = a.scope } end
-      fs.write(ctx.cwd .. "/vpm-lock.lua", require("vpm.state").serialise({ resolved = resolved }))
+    if not locked and manifest then
+      local pk = Lock.from_plan(index, plan)
+      if #args == 0 then
+        Lock.write(ctx, { roots = manifest.deps or {}, packages = pk })
+      else   -- a named install adds to the lock the project already has; the roots stay what vpm.lua says
+        local old = Lock.read(ctx)
+        local merged = old and old.packages or {}
+        for n, e in pairs(pk) do merged[n] = e end
+        Lock.write(ctx, { roots = old and old.roots or manifest.deps or {}, packages = merged })
+      end
     end
     if not ctx.flags.no_register and ctx.cfg.libdir then
       local gs = ctx.state("global")

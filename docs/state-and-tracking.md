@@ -89,3 +89,13 @@ exists both as an unmanaged file and in the index is reported as a conflict, not
 littlefs wears evenly but flash is only ~1 MB. vpm reports the size an install will take, refuses if less
 than a configurable reserve would remain, and never keeps downloaded archives after install (streamed into the
 staging directory, see [ram-budget.md](ram-budget.md)).
+
+## The lock file (2026-11-22)
+`vpm-lock.lua` in the project directory: `{ lockfile = 1, roots = { name = constraint }, packages = { name = { version, digest } } }`. `digest` is the sha256 of the sorted `dest sha256` lines of the
+package's files as the index lists them.
+- `vpm i` with no arguments: if a lock exists and its `roots` equal the `deps` of `vpm.lua`, it installs exactly the locked versions, asks nothing, and refuses (exit 4) when the index now serves different
+  files for a locked version. If `vpm.lua` changed (roots differ) or there is no lock, it resolves again from `vpm.lua` and rewrites the lock.
+- `vpm i NAME` adds what it installs to the lock; `vpm rm NAME` drops it unless `vpm.lua` itself lists it (then the next `vpm i` brings it back).
+- A damaged lock is an error (delete it to start over); the old format (versions only) is ignored and replaced.
+- Only the local (project) scope has a lock. Packages from a local directory (`vpm i ./dir`) have no digest.
+No `--locked` flag: the lock is simply followed when it is valid (decided with the user, 2026-11-22).

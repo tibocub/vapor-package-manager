@@ -129,6 +129,52 @@ assert(code == 1 and has(err, "no terminal") and not fs.exists(proj .. "/lua_mod
 code = vpm({ "install", "-y", "--deps=local", "mathx" })
 assert(code == 0 and fs.exists(proj .. "/lua_modules/mathx.lua") and fs.exists(proj .. "/lua_modules/lpeglike.lua"))
 
+-- 7b. the lock file: exact versions, integrity digest, a plain `vpm i` follows it
+do
+  local lockproj = base .. "/lockproj"
+  assert(fs.mkdirp(lockproj))
+  publish{ lkp = { versions = { ["1.2-1"] = { files = { ["lkp.lua"] = "return '1.2'" } }, ["1.3-1"] = { files = { ["lkp.lua"] = "return '1.3'" } } } } }
+  fs.write(lockproj .. "/vpm.lua", 'return { name = "locked", version = "0.1.0", deps = { lkp = ">= 1.0" } }')
+  code, out = vpm({ "install", "-y", "--deps=local" }, nil, lockproj)
+  assert(code == 0 and fs.read(lockproj .. "/lua_modules/lkp.lua") == "return '1.3'", out)            -- newest wins without a lock
+  local Lock = require("vpm.lock")
+  local lk = assert(Lock.read({ cwd = lockproj }))
+  assert(lk.lockfile == 1 and lk.packages.lkp.version == "1.3-1" and #lk.packages.lkp.digest == 64 and lk.roots.lkp == ">= 1.0")
+
+  -- the index gets a newer version; the lock keeps 1.3
+  publish{ lkp = { versions = { ["1.3-1"] = { files = { ["lkp.lua"] = "return '1.3'" } }, ["1.4-1"] = { files = { ["lkp.lua"] = "return '1.4'" } } } } }
+  fs.rmtree(lockproj .. "/lua_modules")
+  code, out = vpm({ "install", "--deps=local" }, nil, lockproj)                                       -- no -y: a locked install asks nothing
+  assert(code == 0 and fs.read(lockproj .. "/lua_modules/lkp.lua") == "return '1.3'", out)
+
+  -- changing vpm.lua re-resolves and rewrites the lock
+  fs.write(lockproj .. "/vpm.lua", 'return { name = "locked", version = "0.1.0", deps = { lkp = ">= 1.4" } }')
+  fs.rmtree(lockproj .. "/lua_modules")
+  code, out = vpm({ "install", "-y", "--deps=local" }, nil, lockproj)
+  assert(code == 0 and fs.read(lockproj .. "/lua_modules/lkp.lua") == "return '1.4'", out)
+  assert(Lock.read({ cwd = lockproj }).packages.lkp.version == "1.4-1")
+
+  -- the index serves other bytes under the locked version: refused
+  publish{ lkp = { versions = { ["1.3-1"] = { files = { ["lkp.lua"] = "return '1.3'" } }, ["1.4-1"] = { files = { ["lkp.lua"] = "return 'tampered'" } } } } }
+  fs.rmtree(lockproj .. "/lua_modules")
+  code, out, err = vpm({ "install", "--deps=local" }, nil, lockproj)
+  assert(code == 4 and has(err, "different files than the lock") and not fs.exists(lockproj .. "/lua_modules/lkp.lua"), err)
+
+  -- a damaged lock is reported, not ignored
+  fs.write(lockproj .. "/vpm-lock.lua", "this is not lua {")
+  code, out, err = vpm({ "install", "--deps=local" }, nil, lockproj)
+  assert(code == 1 and has(err, "damaged"), err)
+  fs.remove(lockproj .. "/vpm-lock.lua")
+
+  -- named installs join the lock; removing a non-root drops it, a root stays (vpm.lua still wants it)
+  publish{ lkextra = { versions = { ["1.0-1"] = { files = { ["lkextra.lua"] = "return 1" } } } } }
+  code = vpm({ "install", "-y", "--deps=local" }, nil, lockproj)
+  code = vpm({ "install", "-y", "--deps=local", "lkextra" }, nil, lockproj)
+  assert(Lock.read({ cwd = lockproj }).packages.lkextra, "named install joins the lock")
+  vpm({ "remove", "lkextra" }, nil, lockproj)
+  assert(Lock.read({ cwd = lockproj }).packages.lkextra == nil and Lock.read({ cwd = lockproj }).packages.lkp)
+end
+
 assert(require("vpm.cli").size(1010.0) == "1010 B" and require("vpm.cli").size(2048.0) == "2 KB")
 
 -- 8. info

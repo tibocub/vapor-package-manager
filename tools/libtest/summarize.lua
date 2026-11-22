@@ -70,3 +70,27 @@ for k, v in pairs(why) do list[#list + 1] = {k, v} end
 table.sort(list, function(x, y) return x[2] > y[2] end)
 print("\nmodules that load in neither dialect, by cause:")
 for i = 1, math.min(#list, detail and 200 or 25) do print(("%6d  %s"):format(list[i][2], list[i][1]), detail and ("   e.g. " .. examples[list[i][1]]) or "") end
+
+-- COMPAT_OUT=DIR: one record per package for the index builder (build.lua emit reads VLR_COMPAT=DIR)
+--   { status = "ok" | "partial" | "fail" | "untested", loaded = n, total = m, d51 = bool, d54 = bool, cause = first failure, date = "YYYY-MM-DD" }
+-- ok: every module loads in at least one dialect. untested: it could not be installed here (native code, a missing dependency, a network failure), which says nothing about the code.
+local cdir = os.getenv("COMPAT_OUT")
+if cdir then
+  os.execute("mkdir -p '" .. cdir .. "'")
+  local date = os.date("%Y-%m-%d")
+  for name, ml in pairs(pkgs) do
+    local total, loaded, d51, d54, cause, untested = #ml, 0, true, true, nil, false
+    for _, m in ipairs(ml) do
+      local c1, c2 = classify(m.a), classify(m.b == "" and m.a or m.b)
+      if c1 == "install failed" or c1 == "no modules listed" then untested = true end
+      if c1 == "ok" or c2 == "ok" then loaded = loaded + 1 else cause = cause or c1 end
+      if c1 ~= "ok" then d51 = false end
+      if c2 ~= "ok" then d54 = false end
+    end
+    local status = untested and "untested" or (loaded == total and "ok") or (loaded > 0 and "partial") or "fail"
+    local f = assert(io.open(cdir .. "/" .. name .. ".lua", "w"))
+    f:write(("return { status = %q, loaded = %d, total = %d, d51 = %s, d54 = %s, cause = %s, date = %q }\n"):format(
+      status, loaded, total, tostring(d51), tostring(d54), cause and ("%q"):format(cause) or "nil", date))
+    f:close()
+  end
+end

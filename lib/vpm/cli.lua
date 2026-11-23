@@ -89,12 +89,17 @@ local function context(parsed, env)
     for _, p in ipairs(path and {} or { "/flash/etc/vpm.lua", "/etc/vpm.lua" }) do
       path = p; f = io.open(p, "rb"); if f then break end
     end
-    if not f then return nil, "no configuration file (looked for " .. tostring(path) .. "; set VPM_CONFIG or use --config=)" end
-    local chunk = load(f:read("a"), "=" .. path, "t", {})
-    f:close()
-    local ok, t = pcall(chunk or error, "bad config")
-    if not ok or type(t) ~= "table" then return nil, "bad configuration file " .. path end
-    cfg = t
+    if not f and not (parsed.flags.config or os.getenv("VPM_CONFIG")) then   -- nothing set up and nothing asked for: the built-in per-user defaults
+      cfg = require("vpm.defaults").config(os.getenv("HOME"))
+      if not cfg then return nil, "no configuration file (looked for /flash/etc/vpm.lua and /etc/vpm.lua; set VPM_CONFIG or use --config=)" end
+    elseif not f then return nil, "no configuration file " .. tostring(path)
+    else
+      local chunk = load(f:read("a"), "=" .. path, "t", {})
+      f:close()
+      local ok, t = pcall(chunk or error, "bad config")
+      if not ok or type(t) ~= "table" then return nil, "bad configuration file " .. path end
+      cfg = t
+    end
   end
   cfg = setmetatable({}, { __index = cfg })
   cfg.index = parsed.flags.index or cfg.index

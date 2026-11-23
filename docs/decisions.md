@@ -111,3 +111,9 @@ shadowing (dependency-resolution.md).
 - **Bundling:** `vpm bundle PKG... --dir=D` + vlr `make CONF_EXTRA=D/bundle.conf` compiles C rocks into the runtime from the same plan (lbase64, lalarm, uname checked). Not bundled: rocks needing system libraries (other than m, dl, pthread) and a rock's Lua files.
 - **Publishing:** researched, see publishing.md; waits on the user for a key and a decision about `source.url`.
 - Open: a real C rock *with* a system library (e.g. zlib) from the real index; index hosting; make/cmake builds.
+
+## 2026-11-23: the index is hosted on GitHub Pages
+- Public repo `tibocub/vpm-index` (generated content only, never the signing key), served at https://tibocub.github.io/vpm-index/index/v1 (about 13k files, 71 MB; Pages limit 1 GB, 100 GB/month soft bandwidth). `.nojekyll` so files are served as they are.
+- vpm's built-in defaults (lib/vpm/defaults.lua, used when no config file exists and none was asked for): that index, its public key, and per-user directories (`~/.local/share/vpm`, `~/.local/bin`). Boards keep their generated config.
+- Trade-off: GitHub Pages is HTTPS-only, so the "verify over plain HTTP" property is not needed there, and a device without TLS cannot fetch from it directly. Such a device keeps using a copied mirror (`file://`) or a plain-HTTP mirror of the same signed files: the signatures make any mirror equally trustworthy.
+- Publishing a new index = rebuild, sign, replace the contents of the repo with one orphan commit and force-push (history would otherwise grow by tens of MB per rebuild). Script: tools/publish-index.sh.

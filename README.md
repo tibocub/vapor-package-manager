@@ -22,6 +22,10 @@ Nothing is hidden: the index lists every rock and **says what it takes**.
 - **works with vlr**: the index builder loads each rock in a sandbox on vlr and records the result (`vlr:ok`, `partial`, `fails`); `search --works` filters on it.
 - `--here` filters to what *this* machine can install (is there a compiler, tar/unzip, dlopen?).
 
+## Where the index lives
+
+The public index is served by GitHub Pages from [tibocub/vpm-index](https://github.com/tibocub/vpm-index): `https://tibocub.github.io/vpm-index/index/v1`. vpm uses it (and its public key) by default when there is no config file; installs go to `~/.local/share/vpm` (`-g`) or `./lua_modules`. `tools/publish-index.sh` publishes a rebuilt index only after `tools/check-index.lua` has verified every signature, blob and catalogue line.
+
 ## Trust
 
 vpm reads **luarocks.org**. Our index is a signed (ed25519) **mirror of hashes and dates** for every rock (rockspec, source rock, each file of the pure ones), so a download over plain HTTP

@@ -30,7 +30,7 @@ if rec.native then
   cfgw:close()
   local cmd = "cd /w/proj && ulimit -v 4194304 -t 150 -f 200000 2>/dev/null; exec timeout 170 /vlr /vpm/bin/vpm.lua --config=/w/config.lua --allow-scripts -y -g install " .. q(name)
   local full = ("bwrap --unshare-all --share-net --die-with-parent --new-session --clearenv --setenv HOME /tmp --setenv PATH /usr/bin:/bin --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 "
-    .. "--symlink usr/bin /bin --symlink usr/sbin /sbin --ro-bind /etc/pki /etc/pki --ro-bind-try /etc/alternatives /etc/alternatives --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf "
+    .. "--symlink usr/bin /bin --symlink usr/sbin /sbin --ro-bind /etc/pki /etc/pki --ro-bind-try /etc/alternatives /etc/alternatives --ro-bind-try /etc/os-release /etc/os-release --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf "
     .. "--ro-bind %s /vlr --ro-bind %s /vpm --bind %s /w --tmpfs /tmp --proc /proc --dev /dev --chdir /w/proj sh -c %s"):format(q(VLR), q(vpm), q(root), q(cmd))
   o, code = sh(full)
 else

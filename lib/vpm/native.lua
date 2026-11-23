@@ -177,6 +177,12 @@ local function build_script(profile, plan, root, destdir, opts)
   local okh, herr = require("vapor.luaheaders").write(hdr)
   if not okh then return nil, "cannot write Lua headers: " .. tostring(herr) end
   local function cleanup() fs.rmtree(work) end
+  -- Makefiles often ask pkg-config for Lua: answer with vlr's headers (no library: modules take their symbols from the runtime)
+  local pcdir = work .. "/pkgconfig"
+  fs.mkdirp(pcdir)
+  for name, ver in pairs{ lua = "5.4.8", ["lua5.4"] = "5.4.8", ["lua-5.4"] = "5.4.8", lua54 = "5.4.8", ["lua5.1"] = "5.1.5", ["lua-5.1"] = "5.1.5", lua51 = "5.1.5" } do
+    fs.write(pcdir .. "/" .. name .. ".pc", ("prefix=%s\nincludedir=${prefix}\nName: Lua\nDescription: Lua as provided by vlr\nVersion: %s\nCflags: -I${includedir}\nLibs:\n"):format(hdr, ver))
+  end
 
   local libflag = (profile.platform == "macos" or profile.platform == "macosx") and "-bundle -undefined dynamic_lookup" or "-shared"
   local v = {
@@ -196,9 +202,9 @@ local function build_script(profile, plan, root, destdir, opts)
   -- one step: in the source folder, inside the sandbox when there is one
   local log = work .. "/build.log"
   local function step(argv_text)
-    local inner = "cd " .. M.shq(root) .. " && " .. argv_text
+    local inner = "export PKG_CONFIG_PATH=" .. M.shq(pcdir) .. " && cd " .. M.shq(root) .. " && " .. argv_text
     if sandbox then
-      local b = { "bwrap --unshare-all --die-with-parent --new-session --clearenv --setenv HOME /tmp --setenv PATH /usr/bin:/bin --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 --symlink usr/bin /bin --ro-bind-try /etc/alternatives /etc/alternatives --tmpfs /tmp" }
+      local b = { "bwrap --unshare-all --die-with-parent --new-session --clearenv --setenv HOME /tmp --setenv PATH /usr/bin:/bin --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 --symlink usr/bin /bin --ro-bind-try /etc/alternatives /etc/alternatives --ro-bind-try /etc/os-release /etc/os-release --tmpfs /tmp" }
       for _, pfx in ipairs(opts.prefixes or {}) do if pfx:sub(1, 5) ~= "/usr" then b[#b + 1] = "--ro-bind-try " .. M.shq(pfx) .. " " .. M.shq(pfx) end end
       b[#b + 1] = "--bind " .. M.shq(work) .. " " .. M.shq(work) .. " --bind " .. M.shq(root) .. " " .. M.shq(root) .. " --proc /proc --dev /dev --chdir " .. M.shq(root) .. " sh -c " .. M.shq(inner)
       inner = table.concat(b, " ")
@@ -237,6 +243,7 @@ local function build_script(profile, plan, root, destdir, opts)
     local cvars = merged(sp, "variables", profile)
     if cvars.CMAKE_INSTALL_PREFIX == nil then cvars.CMAKE_INSTALL_PREFIX = "$(PREFIX)" end
     if cvars.CMAKE_BUILD_TYPE == nil then cvars.CMAKE_BUILD_TYPE = "Release" end
+    if cvars.CMAKE_POLICY_VERSION_MINIMUM == nil then cvars.CMAKE_POLICY_VERSION_MINIMUM = "3.5" end   -- cmake 4 refuses the old cmake_minimum_required many rocks still have
     local d = {}
     for _, k in ipairs(sorted_keys(cvars)) do d[#d + 1] = M.shq("-D" .. k .. "=" .. subst(cvars[k], v)) end
     local build = M.shq(work .. "/cmake-build")

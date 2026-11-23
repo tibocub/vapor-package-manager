@@ -25,3 +25,20 @@ remaining 10 are `build` or prebuilt-binary rocks whose tree has no source code 
 Not a classifier problem but found by the same run:
 - 40 of 239 sources could not be fetched (16 download failures, 14 missing tags/branches, 10 `git://`/ssh URLs): about 17% of rocks have dead or unusable upstreams. luarocks.org hosts `.src.rock` archives: fall back to them.
 - the file analyzer calls any non-`.lua` entry of `install.lua` native (Teal `.d.tl` type files, for example): it should accept data files. Open.
+
+## make and cmake rocks (2026-11-23)
+
+Besides `builtin` C rocks, vpm builds rocks whose rockspec says `build.type = "make"` or `"cmake"` (classes `c`, or `build` when nothing is compiled), using **make only** as the driver, including on Windows under MSYS2; cmake rocks need `cmake` and `make` installed.
+`command`, `l3build`, tree-sitter and other plugin build types, and C++/Rust/Go rocks, are still listed and described but not built. vlr and vpm themselves build with make only: there is no CMake file to keep in sync.
+
+**Plan** (in the signed index, `native.plan`): `{ make = { makefile, build_target, install_target, build_pass, install_pass, variables, build_variables, install_variables, platforms = { linux = {...} }, install = { lua = {...}, lib = {...} } } }`
+or `{ cmake = { variables, platforms } }`, plus `external` as before. Only the variable tables may differ per platform; anything else platform-specific, or `build_dependencies`, means no plan (the reason is recorded).
+vpm validates every name, path and value (`native.validate`) and shell-quotes them; it assembles the commands itself, as luarocks does (`make -f Makefile TARGET VAR=value...`, then the install target; `cmake -S . -B build -D...`, `--build`, `--target install`).
+
+**Variables** (`$(NAME)` in the rockspec): `PREFIX`, `BINDIR`, `CONFDIR` are scratch folders; `LIBDIR` and `LUADIR` are the flat folder whose contents become the package's files; `LUA_INCDIR` holds vlr's headers (`LUA_LIBDIR` is empty: modules take their symbols from the runtime);
+`CFLAGS` (`-O2 -fPIC -I<headers>`), `LIBFLAG` (`-shared`, or `-bundle -undefined dynamic_lookup` on macOS), `CC`, `LD`, `LIB_EXTENSION`, `OBJ_EXTENSION`, `LUA`, `LUA_VERSION`, and `NAME_INCDIR`/`NAME_LIBDIR` for external dependencies.
+A rock that installs under `PREFIX/lib/lua/5.x` or `share/lua/5.x` is relocated from there; a build that installs nothing vpm can place fails (nothing is registered).
+
+**Trust.** A Makefile or CMake script can run anything. vpm runs it only **inside bubblewrap** (no network, read-only system, only the build folder writable), detected by a trial run so a nested sandbox correctly counts as "none";
+without one the install refuses unless `--allow-scripts` is given. The source is hash-checked against the signed index before anything runs, but the rock author's script is still the rock author's script.
+`vpm bundle` refuses these rocks (they are not a source list to compile into the runtime).

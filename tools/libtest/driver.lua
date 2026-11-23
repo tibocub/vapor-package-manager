@@ -28,7 +28,7 @@ if rec.native then
   local cfgw = io.open(root .. "/config.lua", "w")
   cfgw:write(("return {libdir='/w/lib', appdir='/w/apps', bindir='/w/bin', index=%q, reserve=0, profile='full', keys={%q}}\n"):format(INDEX, KEYS))
   cfgw:close()
-  local cmd = "cd /w/proj && ulimit -v 4194304 -t 150 -f 200000 2>/dev/null; exec timeout 170 /vlr /vpm/bin/vpm.lua --config=/w/config.lua -y -g install " .. q(name)
+  local cmd = "cd /w/proj && ulimit -v 4194304 -t 150 -f 200000 2>/dev/null; exec timeout 170 /vlr /vpm/bin/vpm.lua --config=/w/config.lua --allow-scripts -y -g install " .. q(name)
   local full = ("bwrap --unshare-all --share-net --die-with-parent --new-session --clearenv --setenv HOME /tmp --setenv PATH /usr/bin:/bin --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 "
     .. "--symlink usr/bin /bin --symlink usr/sbin /sbin --ro-bind /etc/pki /etc/pki --ro-bind-try /etc/alternatives /etc/alternatives --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf "
     .. "--ro-bind %s /vlr --ro-bind %s /vpm --bind %s /w --tmpfs /tmp --proc /proc --dev /dev --chdir /w/proj sh -c %s"):format(q(VLR), q(vpm), q(root), q(cmd))
@@ -51,6 +51,17 @@ local function try(mod, dialect)
   return (r:gsub("\n", " | "):sub(1, 220))
 end
 
-for _, mod in ipairs(rec.modules or {}) do line(mod, try(mod, ""), try(mod, "--dialect=5.4")) end
-if #(rec.modules or {}) == 0 then line("-", "NO-MODULES", "") end
+-- a make or cmake rock does not say which modules it installs: take them from the installed files
+local modules = rec.modules or {}
+if #modules == 0 then
+  local p = io.popen(("cd %s && find . -type f \\( -name '*.lua' -o -name '*.so' \\) -not -path './.vpm*' 2>/dev/null"):format(q(root .. "/lib")))
+  for f in p:lines() do
+    local m = f:gsub("^%./", ""):gsub("%.[^./]*$", ""):gsub("/init$", ""):gsub("/", ".")
+    modules[#modules + 1] = m
+  end
+  p:close()
+  table.sort(modules)
+end
+for _, mod in ipairs(modules) do line(mod, try(mod, ""), try(mod, "--dialect=5.4")) end
+if #modules == 0 then line("-", "NO-MODULES", "") end
 out:close()

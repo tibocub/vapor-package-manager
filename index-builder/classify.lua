@@ -118,9 +118,84 @@ end
 -- Lua files of the same rock are installed as ordinary files (package_analysis with skip_native).
 local UNIX_PLATFORMS = { unix = true, linux = true, macosx = true, bsd = true, freebsd = true, openbsd = true, netbsd = true, cygwin = false }
 
+-- make / cmake rocks: the plan is the rockspec's own settings, validated later by vpm.native (the client assembles the commands). Only the variable tables may differ per platform.
+local SCRIPT_PLATFORMS = { unix = true, linux = true, macosx = true, bsd = true, freebsd = true, openbsd = true, netbsd = true, windows = true, mingw32 = true, win32 = true, cygwin = true }
+local VARTABLES = { "variables", "build_variables", "install_variables" }
+local function strmap(t)
+  if t == nil then return nil end
+  if type(t) ~= "table" then return false end
+  local out, any = {}, false
+  for k, v in pairs(t) do
+    if type(k) ~= "string" or (type(v) ~= "string" and type(v) ~= "number" and type(v) ~= "boolean") then return false end
+    out[k] = tostring(v); any = true
+  end
+  return any and out or nil
+end
+local function script_plan(rs, build, btype)
+  if type(rs.build_dependencies) == "table" and #rs.build_dependencies > 0 then return nil, "needs build dependencies" end
+  local sp = {}
+  local keys = btype == "make" and { "makefile", "build_target", "install_target" } or {}
+  for _, k in ipairs(keys) do
+    if build[k] ~= nil then
+      if type(build[k]) ~= "string" then return nil, "bad " .. k end
+      sp[k] = build[k]
+    end
+  end
+  if btype == "make" then
+    for _, k in ipairs{ "build_pass", "install_pass" } do
+      if build[k] ~= nil then if type(build[k]) ~= "boolean" then return nil, "bad " .. k end sp[k] = build[k] end
+    end
+    if build.install ~= nil then
+      if type(build.install) ~= "table" then return nil, "bad install table" end
+      for _, kind in ipairs{ "lua", "lib" } do
+        local t = build.install[kind]
+        if t ~= nil then
+          local m = strmap(t)
+          if m == false then return nil, "bad install." .. kind end
+          if m then sp.install = sp.install or {}; sp.install[kind] = m end
+        end
+      end
+      for kind in pairs(build.install) do if kind ~= "lua" and kind ~= "lib" and kind ~= "bin" and kind ~= "conf" then return nil, "install." .. tostring(kind) end end
+    end
+  end
+  for _, k in ipairs(VARTABLES) do
+    local m = strmap(build[k])
+    if m == false then return nil, "bad " .. k end
+    sp[k] = m
+  end
+  for pname, p in pairs(build.platforms or {}) do
+    if not SCRIPT_PLATFORMS[pname] or type(p) ~= "table" then return nil, "platform " .. tostring(pname) end
+    for k in pairs(p) do
+      local ok = false
+      for _, vt in ipairs(VARTABLES) do if k == vt then ok = true end end
+      if not ok then return nil, "platform-specific " .. tostring(k) .. " for " .. pname end
+    end
+    local pt = {}
+    for _, k in ipairs(VARTABLES) do
+      local m = strmap(p[k])
+      if m == false then return nil, "bad " .. k .. " for " .. pname end
+      pt[k] = m
+    end
+    if next(pt) then sp.platforms = sp.platforms or {}; sp.platforms[pname] = pt end
+  end
+  return sp
+end
+
 function M.plan(rs)
   local build = type(rs.build) == "table" and rs.build or {}
   local btype = build.type or "builtin"
+  if btype == "make" or btype == "cmake" then
+    local sp, why = script_plan(rs, build, btype)
+    if not sp then return nil, why end
+    local plan = { [btype] = sp }
+    for ename, e in pairs(rs.external_dependencies or {}) do
+      if type(ename) == "string" and type(e) == "table" then
+        plan.external = plan.external or {}
+        plan.external[ename] = { header = type(e.header) == "string" and e.header or nil, library = type(e.library) == "string" and e.library or nil }
+      end
+    end
+    return plan
+  end
   if btype ~= "builtin" and btype ~= "module" then return nil, "build type " .. tostring(btype) end
   if type(build.modules) ~= "table" then return nil, "no modules table" end
   for pname, p in pairs(build.platforms or {}) do

@@ -64,13 +64,14 @@ if cmd == "one" then
     end
     entry, why = { files = {}, bin = {}, modules = {}, requires = {} }, nil
     -- C rocks vpm can build: a compile plan (checked against the unpacked source) and the Lua files of the rock as ordinary files
-    if native.native == "c" and native.build == "builtin" and origin.type == "luarocks" then
+    local planned = (native.native == "c" or native.native == "build") and (native.build == "builtin" or native.build == "make" or native.build == "cmake")
+    if planned and origin.type == "luarocks" then
       local cplan, preason = require("classify").plan(rs)
       if cplan then
         local okv, verr = require("vpm.native").validate(cplan)
         if not okv then cplan, preason = nil, verr end
       end
-      if cplan then
+      if cplan and cplan.modules then
         for _, m in ipairs(cplan.modules) do
           for _, srcf in ipairs(m.sources) do
             if not source.run("test -f " .. source.q(root .. "/" .. srcf) .. " -a ! -L " .. source.q(root .. "/" .. srcf)) then cplan, preason = nil, "missing source " .. srcf; break end
@@ -78,12 +79,20 @@ if cmd == "one" then
           if not cplan then break end
         end
       end
-      if cplan then
+      if cplan and cplan.modules then
         local lentry, lwhy = pkg.analyze(rs, root, origin, { skip_native = true })
         if lentry then entry = lentry else cplan, preason = nil, "lua part: " .. tostring(lwhy) end
+      elseif cplan then   -- make / cmake: the script decides what is installed; the build file must be in the tree, and the modules the rockspec names are what we can test
+        local script = cplan.make and (cplan.make.makefile or "Makefile") or "CMakeLists.txt"
+        if not source.run("test -f " .. source.q(root .. "/" .. script) .. " -a ! -L " .. source.q(root .. "/" .. script)) then cplan, preason = nil, "no " .. script .. " in the source rock" end
+        if cplan then
+          for _, kindname in ipairs{ "lua", "lib" } do
+            for m in pairs((cplan.make and cplan.make.install or {})[kindname] or {}) do entry.modules[#entry.modules + 1] = m end
+          end
+        end
       end
       native.plan, native.srcdir, native.no_plan_reason = cplan, rs.source and rs.source.dir or nil, (not cplan) and preason or nil
-    elseif native.native == "c" and native.build == "builtin" then
+    elseif planned then
       native.no_plan_reason = "no source rock on luarocks.org"
     end
     local bt = (rs.build or {}).type
@@ -215,7 +224,7 @@ if cmd == "emit" then
         end
       end
       local nat = r.native
-      if nat and nat.native == "c" and not nat.plan and not nat.no_plan_reason then   -- C by its source tree but not a builtin build: vpm builds only builtin ones
+      if nat and (nat.native == "c" or nat.native == "build") and not nat.plan and not nat.no_plan_reason then   -- C (or a build step) without a plan: a build type vpm does not run
         local copy = {}
         for k, v in pairs(nat) do copy[k] = v end
         copy.no_plan_reason = "build type " .. tostring(nat.build)
@@ -260,7 +269,8 @@ if cmd == "emit" then
         local cls = r.native and r.native.native or "pure"
         local w = ver.vlr and (ver.vlr.status == "ok" and "ok" or ver.vlr.status == "fail" and "fail" or ver.vlr.status == "partial" and "partial") or nil
         catalogue[#catalogue + 1] = json.compact({ n = name, v = r.version, s = ver.summary, c = cls, h = host,
-          b = require("vpm.native").buildable(ver) and 1 or nil, w = w })
+          b = require("vpm.native").buildable(ver) and 1 or nil, w = w,
+          k = ver.native and ver.native.plan and (ver.native.plan.cmake and "cmake" or ver.native.plan.make and "make") or nil })
       end
       local kind = next(r.bin) and "app" or "lib"
       local shard = name:sub(1, 2):lower():gsub("[^%w]", "_")

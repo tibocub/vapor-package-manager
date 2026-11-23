@@ -139,6 +139,70 @@ if os.execute("command -v tar >/dev/null 2>&1") == 0 and require("vpm.profile").
   assert(has(out, "cdemo") and not has(out, "zlibish"), "with a compiler C rocks are offered; unbuildable ones are not: " .. out)
 end
 
+-- make and cmake rocks: the plan holds the rockspec's settings, vpm runs the rock's own scripts (sandboxed when bubblewrap works, otherwise only with --allow-scripts)
+local rprof = require("vpm.profile").detect()
+if os.execute("command -v tar >/dev/null 2>&1") == 0 and rprof.can_build_c and rprof.make then
+  local function mkrock(dirname, files)
+    local d = base .. "/script/" .. dirname
+    assert(fs.mkdirp(d))
+    for name, body in pairs(files) do fs.write(d .. "/" .. name, body) end
+    assert(os.execute("cd " .. base .. "/script && tar -czf " .. dirname .. ".src.rock " .. dirname) == 0)
+    local rock = fs.read(base .. "/script/" .. dirname .. ".src.rock")
+    return { url = "file://" .. base .. "/script/" .. dirname .. ".src.rock", sha256 = require("vpm.hash").hex(rock), size = #rock }
+  end
+  local csrc = '#include "lua.h"\nstatic int f(lua_State *L){ lua_pushinteger(L, 7); return 1; }\nint luaopen_%s(lua_State *L){ lua_pushcfunction(L, f); return 1; }\n'
+  local mksrc = mkrock("mkdemo-1.0", { ["mkdemo.c"] = csrc:format("vpmmkdemo"),
+    Makefile = "all: vpmmkdemo.so\nvpmmkdemo.so: mkdemo.c\n\t$(CC) $(CFLAGS) $(LIBFLAG) -o $@ mkdemo.c\ninstall:\n\tmkdir -p $(INST_LIBDIR)\n\tcp vpmmkdemo.so $(INST_LIBDIR)/\n" })
+  publish{ mkdemo = { versions = { ["1.0-1"] = { files = {},
+    native = { native = "c", build = "make", langs = { "c" }, plan = { make = { build_variables = { CC = "$(CC)", CFLAGS = "$(CFLAGS)", LIBFLAG = "$(LIBFLAG)" }, install_variables = { INST_LIBDIR = "$(LIBDIR)" } } } },
+    luarocks = { src = mksrc } } } } }
+  code, out = vpm({ "info", "mkdemo" })
+  assert(has(out, "needs a C compiler") and not has(out, "cannot build"), out)
+  local real = rprof
+  local nosand = {}
+  for k, v in pairs(real) do nosand[k] = v end
+  nosand.sandbox = nil
+  test_profile = nosand                                                -- no sandbox: refused unless the user says it is fine
+  code, out, err = vpm({ "install", "-g", "mkdemo" })
+  assert(code == 4 and has(err, "--allow-scripts") and not fs.exists(sys .. "/lib/vpmmkdemo.so"), err)
+  test_profile = real
+  code, out, err = vpm({ "install", "-g", "mkdemo" })                   -- this machine's own profile: sandboxed if bubblewrap works, else refused
+  if real.sandbox then
+    assert(code == 0 and fs.exists(sys .. "/lib/vpmmkdemo.so"), tostring(err) .. out)
+    code, out = vpm({ "check", "-g" }); assert(code == 0, out)
+    assert(vpm({ "remove", "-g", "mkdemo" }) == 0 and not fs.exists(sys .. "/lib/vpmmkdemo.so"))
+  else
+    assert(code == 4 and has(err, "--allow-scripts"), err)
+  end
+  test_profile = nosand
+  code, out, err = vpm({ "install", "-g", "--allow-scripts", "mkdemo" })
+  assert(code == 0 and fs.exists(sys .. "/lib/vpmmkdemo.so"), tostring(err) .. out)
+  package.cpath = sys .. "/lib/?.so;" .. package.cpath
+  assert(require("vpmmkdemo")() == 7, "the module built by the rock's Makefile runs")
+  assert(vpm({ "remove", "-g", "mkdemo" }) == 0)
+  test_profile = nil
+
+  if real.tools.cmake then
+    local cmsrc = mkrock("cmdemo-1.0", { ["cmdemo.c"] = csrc:format("vpmcmdemo"),
+      ["CMakeLists.txt"] = "cmake_minimum_required(VERSION 3.5)\nproject(cmdemo C)\nadd_library(vpmcmdemo MODULE cmdemo.c)\nset_target_properties(vpmcmdemo PROPERTIES PREFIX \"\")\ntarget_include_directories(vpmcmdemo PRIVATE ${LUA_INCDIR})\ninstall(TARGETS vpmcmdemo DESTINATION ${LUA_LIBDIR_INSTALL})\n" })
+    publish{ cmdemo = { versions = { ["1.0-1"] = { files = {},
+      native = { native = "c", build = "cmake", langs = { "c" }, plan = { cmake = { variables = { LUA_INCDIR = "$(LUA_INCDIR)", LUA_LIBDIR_INSTALL = "$(LIBDIR)" } } } },
+      luarocks = { src = cmsrc } } } } }
+    test_profile = nosand
+    code, out, err = vpm({ "install", "-g", "--allow-scripts", "cmdemo" })
+    assert(code == 0 and fs.exists(sys .. "/lib/vpmcmdemo.so"), tostring(err) .. out)
+    assert(vpm({ "remove", "-g", "cmdemo" }) == 0)
+    test_profile = nil
+    local noc = {}
+    for k, v in pairs(real) do noc[k] = v end
+    noc.tools = { tar = true, unzip = true }
+    test_profile = noc                                                  -- cmake missing: said so, nothing installed
+    code, out, err = vpm({ "install", "-g", "cmdemo" })
+    assert(code == 4 and has(err, "cmake") and has(err, "not installed"), err)
+    test_profile = nil
+  end
+end
+
 -- 3. list, world, why
 code, out = vpm({ "ls", "-g" })
 assert(has(out, "mathx") and has(out, "world") and has(out, "lpeglike") and has(out, "dep"))

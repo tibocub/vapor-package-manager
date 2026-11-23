@@ -22,7 +22,19 @@ p = detect({ exec = true, dlopen = true }, { cc = 1, tar = 1, unzip = 1 }, "x; r
 assert(p.cc == "cc", "CC with shell characters is ignored")
 local good = detect({ exec = true, dlopen = true }, { cc = 1, tar = 1, unzip = 1 })
 local nocc = detect({ exec = true, dlopen = true }, { tar = 1, unzip = 1 })
-assert(profile.can_install(good, nil) and profile.can_install(good, "c") and not profile.can_install(nocc, "c") and not profile.can_install(good, "other") and not profile.can_install(good, "build"))
+assert(profile.can_install(good, nil) and profile.can_install(good, "c") and not profile.can_install(nocc, "c") and not profile.can_install(good, "other") and profile.can_install(good, "build") and not profile.can_install(nocc, "build"))
+assert(table.concat(profile.plan_tools({ make = {} }), ",") == "make" and table.concat(profile.plan_tools({ cmake = {} }), ",") == "cmake,make" and #profile.plan_tools({ modules = {} }) == 0)
+
+-- make/cmake plan validation: names, targets, paths and variable values are all checked
+local function okp(p) return native.validate(p) end
+assert(okp({ make = {} }) and okp({ make = { makefile = "src/Makefile", build_target = "all", build_variables = { CFLAGS = "$(CFLAGS)" }, platforms = { linux = { build_variables = { A = "1" } } }, install = { lib = { ["a.b"] = "src/a.so" } } } }))
+assert(okp({ cmake = { variables = { LUA_INCDIR = "$(LUA_INCDIR)" } } }))
+assert(not okp({ make = {}, cmake = {} }) and not okp({ make = {}, modules = {} }), "one kind of plan only")
+assert(not okp({ make = { makefile = "../x" } }) and not okp({ make = { makefile = "/etc/x" } }), "makefile stays inside the source")
+assert(not okp({ make = { build_target = "all; rm -rf /" } }) and not okp({ make = { install_target = "a b" } }), "targets are words")
+assert(not okp({ make = { build_variables = { ["A B"] = "1" } } }) and not okp({ make = { build_variables = { A = "x\ny" } } }), "variable names and values")
+assert(not okp({ make = { install = { lib = { a = "../x.so" } } } }) and not okp({ make = { install = { bin = { a = "x" } } } }), "install entries")
+assert(not okp({ make = { platforms = { linux = { build_variables = { ["1x"] = "a" } } } } }))
 
 -- quoting and plan validation: the plan comes from the network
 assert(native.shq("a b") == "'a b'" and native.shq("it's") == "'it'\\''s'")

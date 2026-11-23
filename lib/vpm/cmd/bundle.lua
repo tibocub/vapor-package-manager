@@ -27,6 +27,7 @@ return function(ctx, args)
         ctx.err("%s %s cannot be bundled: %s", name, ver, m.native and (m.native.no_plan_reason or ("native class " .. tostring(m.native.native))) or "it is pure Lua (nothing to compile; vpm i it)")
         return 4
       end
+      if m.native.plan.make or m.native.plan.cmake then ctx.err("%s cannot be bundled: it is built by its own %s scripts, not compiled from a source list", name, m.native.plan.make and "make" or "cmake"); return 4 end
       local ok, verr = native.validate(m.native.plan)
       if not ok then ctx.err("%s: %s", name, verr); return 4 end
       for _, mod in ipairs(m.native.plan.modules) do

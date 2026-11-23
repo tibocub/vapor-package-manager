@@ -27,7 +27,8 @@ return function(ctx, args)
     if f.works and e.w ~= "ok" then ok = false end
     if profile then
       local can = require("vpm.profile").can_install(profile, c ~= "pure" and c or nil)
-      if not can or (c ~= "pure" and not e.b) then ok = false end      -- b: vpm can build it (class c with a plan and a source rock)
+      if not can or (c ~= "pure" and not e.b) then ok = false end
+      if ok and e.k then for _, t in ipairs(require("vpm.profile").plan_tools({ [e.k] = true })) do if not profile.tools[t] then ok = false end end end      -- b: vpm can build it (class c with a plan and a source rock)
     end
     if ok then
       local hay = (e.n .. " " .. (e.s or "")):lower()

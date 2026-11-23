@@ -123,6 +123,13 @@ function I:apply(plan, requested)
         local prof = self.profile or require("vpm.profile").detect()
         local can, missing = require("vpm.profile").can_install(prof, "c")
         if not can then return fail(4, ("%s %s is C code and this machine lacks %s"):format(a.name, a.version, table.concat(missing, ", "))) end
+        local plan_tools = require("vpm.profile").plan_tools(n.plan)
+        for _, t in ipairs(plan_tools) do
+          if not (prof.tools or {})[t] then return fail(4, ("%s %s is built with %s, which is not installed here"):format(a.name, a.version, t)) end
+        end
+        if #plan_tools > 0 and prof.sandbox ~= "bwrap" and not self.cfg.allow_scripts then
+          return fail(4, ("%s %s runs the rock's own %s build scripts and there is no sandbox on this machine: repeat with --allow-scripts if you trust it"):format(a.name, a.version, plan_tools[1] == "cmake" and "cmake" or "make"))
+        end
         nat = { plan = n.plan, src = src, srcdir = n.srcdir, profile = prof }
       end
       local job = { a = a, st = st, kind = kind, base = base, files = {}, meta = meta, old = old, native = nat }
@@ -212,7 +219,7 @@ function I:apply(plan, requested)
       if hex ~= nat.src.sha256 then return fail(4, ("%s: source rock sha256 mismatch"):format(j.a.name)) end
       local root, uerr = native.unpack(nat.profile, rock, scratch, nat.srcdir)
       if not root then return fail(1, ("%s: %s"):format(j.a.name, uerr)) end
-      local built, berr = native.build(nat.profile, nat.plan, root, stage, { prefixes = self.cfg.prefixes })
+      local built, berr = native.build(nat.profile, nat.plan, root, stage, { prefixes = self.cfg.prefixes, allow_scripts = self.cfg.allow_scripts })
       fs.rmtree(scratch)
       if not built then return fail(1, ("%s %s: %s"):format(j.a.name, j.a.version, berr)) end
       for _, rel in ipairs(built) do

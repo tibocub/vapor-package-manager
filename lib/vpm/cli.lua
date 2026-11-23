@@ -12,7 +12,7 @@ local COMMANDS = { install = true, remove = true, list = true, upgrade = true, w
 local FLAGS = { g = "global", n = "dry_run", y = "yes", q = "quiet", v = "verbose", f = "force" }
 local LONG = { global = "global", ["dry-run"] = "dry_run", yes = "yes", quiet = "quiet", verbose = "verbose",
                force = "force", repair = "repair", ["no-register"] = "no_register",
-               upload = "upload", pure = "pure", works = "works", ["no-host"] = "no_host", all = "all", here = "here" }
+               upload = "upload", ["allow-scripts"] = "allow_scripts", pure = "pure", works = "works", ["no-host"] = "no_host", all = "all", here = "here" }
 
 local USAGE = [[
 usage: vpm <command> [options] [packages]
@@ -28,7 +28,7 @@ usage: vpm <command> [options] [packages]
   check [--repair]             verify installed files, undo a crashed run
   world                        the packages you asked for
   init                         create a vpm.lua here
-options: -g global   -n dry run   -y no questions   --deps=auto|global|local   --index=URL   -f/--force   -v   -q]]
+options: -g global   -n dry run   --allow-scripts run a rock's own make/cmake scripts without a sandbox   -y no questions   --deps=auto|global|local   --index=URL   -f/--force   -v   -q]]
 
 -- returns { cmd=, args={}, flags={} } or nil, message
 function M.parse(argv)
@@ -103,6 +103,7 @@ local function context(parsed, env)
   end
   cfg = setmetatable({}, { __index = cfg })
   cfg.index = parsed.flags.index or cfg.index
+  if parsed.flags.allow_scripts then cfg.allow_scripts = true end
   cfg.local_root = cfg.local_root or (ctx.cwd .. "/lua_modules")
   ctx.cfg = cfg
 

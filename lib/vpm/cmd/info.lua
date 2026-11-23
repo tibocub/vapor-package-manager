@@ -28,10 +28,13 @@ return function(ctx, args)
   if n then
     local what = ({ c = "needs a C compiler", build = "needs a build step", other = "native code" })[n.native] or "native code"
     ctx.out("  native:    %s%s", what, (n.langs and #n.langs > 0) and (" (" .. table.concat(n.langs, ", ") .. ")") or "")
-    if n.native == "c" and not require("vpm.native").buildable(m) then ctx.out("             vpm cannot build it yet: %s", n.no_plan_reason or "no build plan") end
+    if (n.native == "c" or n.native == "build") and not require("vpm.native").buildable(m) then ctx.out("             vpm cannot build it yet: %s", n.no_plan_reason or "no build plan") end
     if n.external then ctx.out("             system libraries: %s", table.concat(n.external, ", ")) end
     if n.build_deps then ctx.out("             build needs: %s", table.concat(n.build_deps, ", ")) end
-    local can, missing = require("vpm.profile").can_install(ctx.profile(), n.native)
+    local pm = require("vpm.profile")
+    local can, missing = pm.can_install(ctx.profile(), n.native)
+    if can and n.plan then for _, t in ipairs(pm.plan_tools(n.plan)) do if not ctx.profile().tools[t] then can, missing = false, { t } end end end
+    if can and (n.native == "c" or n.native == "build") and not require("vpm.native").buildable(m) then can, missing = false, { "a supported build (see above)" } end
     ctx.out("  here:      %s", can and "can be installed on this machine" or ("cannot be installed here: needs " .. table.concat(missing, ", ")))
   else
     ctx.out("  native:    no (pure Lua)")

@@ -21,7 +21,10 @@ function M.detect(env)
     local cc = getenv("CC")
     if cc and cc:match("^[%w_%./%-]+$") and have(cc) then p.cc = cc
     else for _, c in ipairs{ "cc", "gcc", "clang" } do if have(c) then p.cc = c; break end end end
-    for _, t in ipairs{ "tar", "unzip" } do if have(t) then p.tools[t] = true end end
+    for _, t in ipairs{ "tar", "unzip", "cmake" } do if have(t) then p.tools[t] = true end end
+    for _, m in ipairs{ "make", "gmake" } do if have(m) then p.make = m; p.tools.make = true; break end end   -- plain make is what rockspecs expect, gmake is the fallback (the BSDs)
+    -- a working sandbox for third-party build scripts: bubblewrap with no network and a read-only system (nested sandboxes fail here, which is the right answer)
+    if p.platform == "linux" and have("bwrap") and run("bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 /usr/bin/true >/dev/null 2>&1") then p.sandbox = "bwrap" end
   end
 
   if not p.exec then p.missing[#p.missing + 1] = "a way to run programs"
@@ -35,10 +38,18 @@ function M.detect(env)
   return p
 end
 
+-- tools a build plan needs besides the C compiler: make and cmake rocks run the rock's own build scripts
+function M.plan_tools(plan)
+  if type(plan) ~= "table" then return {} end
+  if plan.cmake then return { "cmake", "make" } end
+  if plan.make then return { "make" } end
+  return {}
+end
+
 -- can this machine install a package of this native class? (pure always; "c" when it can build C; build/other: not yet)
 function M.can_install(p, class)
   if class == nil or class == false or class == "pure" then return true end
-  if class == "c" then return p.can_build_c, p.missing end
+  if class == "c" or class == "build" then return p.can_build_c, p.missing end   -- "build": a make/cmake step with no compiled code; the plan tools are checked by the installer
   return false, { "a build for this kind of rock (not supported yet)" }
 end
 

@@ -117,3 +117,10 @@ shadowing (dependency-resolution.md).
 - vpm's built-in defaults (lib/vpm/defaults.lua, used when no config file exists and none was asked for): that index, its public key, and per-user directories (`~/.local/share/vpm`, `~/.local/bin`). Boards keep their generated config.
 - Trade-off: GitHub Pages is HTTPS-only, so the "verify over plain HTTP" property is not needed there, and a device without TLS cannot fetch from it directly. Such a device keeps using a copied mirror (`file://`) or a plain-HTTP mirror of the same signed files: the signatures make any mirror equally trustworthy.
 - Publishing a new index = rebuild, sign, replace the contents of the repo with one orphan commit and force-push (history would otherwise grow by tens of MB per rebuild). Script: tools/publish-index.sh.
+
+## 2026-11-23 (later): make and cmake rocks
+- Decision (user): support any reasonable build config, **make and cmake both**. For vlr and vpm themselves there is only a Makefile (no CMake to keep in sync). Details and the variable set: native-detection.md.
+- Plans are structured and validated by the client; the rock's own Makefile/CMake scripts run only inside bubblewrap, or with `--allow-scripts` when no sandbox works (detected by a trial run).
+- Result on the crawl: 195 make/cmake rocks; 96 have a plan (73 make, 23 cmake); 77 have no source rock on luarocks.org (rockspec-only uploads, nothing hash-pinned to build from); the rest use platform-specific build settings, `build_dependencies`, or need no Makefile. Of the 96, 19 build and install in the sandbox and 15 load completely (luv, luadaemon, lpty... verified from the public Pages index).
+  The others fail for reasons vpm should not fix: downloads during `make` (no network in the sandbox, on purpose), missing system libraries, `lua_setfenv`/LuaJIT-only code, build tools (waf on a new Python, fennel), C that current gcc rejects.
+- Follow-ups, not done: building rocks that only have a rockspec (git/archive source; needs a pinned commit or tree hash), `command` build types, C++/Rust/Go rocks, `bundle` for script-built rocks (refused).

@@ -184,7 +184,7 @@ if cmd == "emit" then
   end
 
   os.execute("mkdir -p " .. source.q(out .. "/index/v1/p"))
-  local n, reasons, hostn = 0, {}, 0
+  local n, reasons, hostn, skipped = 0, {}, 0, 0
   local names = {}
   for name in pairs(checked) do names[#names + 1] = name end
   table.sort(names)
@@ -240,10 +240,21 @@ if cmd == "emit" then
         blocked_by = blocked and { name = blocked.name, reason = blocked.reason } or nil,
         origin = r.origin, summary = r.summary, license = r.license, homepage = r.homepage,
       }
-      local files = {}
+      local files, dangling = {}, nil
+      local blobdir = os.getenv("VLR_BLOBS")
       for dest, ent in pairs(r.files) do
-        files[dest] = { sha256 = ent.sha256, size = ent.size, url = source.raw_url(r.origin, ent.src) or ("blob:" .. ent.sha256) }
+        local url = source.raw_url(r.origin, ent.src)
+        if not url then
+          url = "blob:" .. ent.sha256
+          -- never publish a reference vpm cannot download
+          if blobdir and not io.open(("%s/%s/%s"):format(blobdir, ent.sha256:sub(1, 2), ent.sha256), "rb") then dangling = dest end
+        end
+        files[dest] = { sha256 = ent.sha256, size = ent.size, url = url }
       end
+      if dangling then
+        io.stderr:write(("emit: %s skipped: no stored blob for %s (rerun its `one` stage with VLR_BLOBS set)\n"):format(name, dangling))
+        skipped = skipped + 1
+      else
       ver.files = files
       do   -- one line per package for `vpm search`
         local cls = r.native and r.native.native or "pure"
@@ -258,6 +269,7 @@ if cmd == "emit" then
             json.encode({ name = name, kind = kind, versions = { [r.version] = ver } }) .. "\n")
       n = n + 1
       if host then hostn = hostn + 1 end
+      end
     end
   end
   table.sort(catalogue)
@@ -269,7 +281,7 @@ if cmd == "emit" then
   local rl = {}
   for k, c in pairs(reasons) do rl[#rl + 1] = { k, c } end
   table.sort(rl, function(a, b) return a[2] > b[2] end)
-  print(("index: %d packages written (%d tagged host), %d rejected"):format(n, hostn, #names - n))
+  print(("index: %d packages written (%d tagged host), %d rejected, %d skipped for missing blobs"):format(n, hostn, #names - n - skipped, skipped))
   for i = 1, math.min(14, #rl) do print(("  %5d  %s"):format(rl[i][2], rl[i][1])) end
 end
 

@@ -1,10 +1,13 @@
 #!/bin/sh
-# tools/publish-index.sh INDEX_OUT REPO_DIR : copy a built and signed index into the vpm-index checkout as ONE orphan commit and force-push it (GitHub Pages serves main).
+# tools/publish-index.sh INDEX_OUT REPO_DIR PUBKEY_HEX : copy a built and signed index into the vpm-index checkout as ONE orphan commit and force-push it (GitHub Pages serves main).
 # INDEX_OUT holds index/ and blobs/ (the output of index-builder/build.lua emit + sign.lua sign). Never put key.pem there.
 set -e
-out=$1 repo=$2
+out=$1 repo=$2 pub=$3
+here=$(cd "$(dirname "$0")/.." && pwd)
+[ -n "$pub" ] || { echo "usage: publish-index.sh INDEX_OUT REPO_DIR PUBKEY_HEX" >&2; exit 2; }
 [ -d "$out/index/v1" ] && [ -f "$out/index/v1/meta.json.sig" ] || { echo "not a signed index: $out" >&2; exit 1; }
 find "$out" -name '*.pem' | grep -q . && { echo "refusing: a .pem file is inside $out" >&2; exit 1; }
+"${VLR:-vlr}" "$here/tools/check-index.lua" "$out" "$pub" || { echo "index failed its checks: not published" >&2; exit 1; }
 cd "$repo"
 git checkout -q --orphan next
 git rm -rqf . >/dev/null 2>&1 || true

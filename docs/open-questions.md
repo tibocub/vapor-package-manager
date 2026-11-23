@@ -1,5 +1,7 @@
 # Open questions
 
+> Historical: written when vpm was a vaporOS-only, pure-Lua-only tool. vpm is now a general package manager that also builds C rocks; see [status.md](status.md) and [spec.md](spec.md) for the current state. Kept for the reasoning.
+
 Ordered by how much they block design. Mark each with a decision in [decisions.md](decisions.md) when settled.
 
 ## Q1. Where do new dependencies of a local install go by default?

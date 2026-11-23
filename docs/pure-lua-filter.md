@@ -1,5 +1,7 @@
 # Keeping only pure-Lua rocks
 
+> Historical: written when vpm was a vaporOS-only, pure-Lua-only tool. vpm is now a general package manager that also builds C rocks; see [status.md](status.md) and [spec.md](spec.md) for the current state. Kept for the reasoning.
+
 Goal: use the LuaRocks repository without ever offering something that cannot work on vaporOS (no dynamic
 linking, no compiler on the device).
 

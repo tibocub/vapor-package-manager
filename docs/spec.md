@@ -1,5 +1,7 @@
 # vpm specification (v1 draft)
 
+> The specification. Some command details below predate the general-package-manager redesign (default paths, native rocks, publishing are implemented; see [status.md](status.md) for what is built).
+
 What vpm does, precisely. Concepts live in [design.md](design.md), resolver rules in
 [dependency-resolution.md](dependency-resolution.md), disk layout in [state-and-tracking.md](state-and-tracking.md).
 Items marked **PROPOSED** are Claude's defaults awaiting the user's decision; everything else restates a decision

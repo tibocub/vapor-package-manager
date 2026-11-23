@@ -1,5 +1,7 @@
 # What vaporOS itself must provide first
 
+> Historical: written when vpm was a vaporOS-only, pure-Lua-only tool. vpm is now a general package manager that also builds C rocks; see [status.md](status.md) and [spec.md](spec.md) for the current state. Kept for the reasoning.
+
 vpm is a Lua program; some things it needs are firmware or shell features. Each is also useful on its own,
 so they can be built before vpm exists. Order is roughly the order they unblock work.
 

@@ -172,12 +172,15 @@ local function build_script(profile, plan, root, destdir, opts)
   if #missing > 0 then return nil, "missing system libraries: " .. table.concat(missing, ", ") end
 
   local work = destdir .. "/.vpm-work"
-  local out, prefix, hdr = work .. "/out", work .. "/prefix", work .. "/headers"
-  for _, d in ipairs{ out, prefix .. "/bin", prefix .. "/etc", hdr .. "/lib" } do fs.mkdirp(d) end
+  -- a stand-in Lua installation as luarocks describes it: LUA_DIR with include/ (vlr's headers), lib/ (empty stub libraries, so -llua links) and bin/
+  local out, prefix, luadir = work .. "/out", work .. "/prefix", work .. "/lua"
+  local hdr = luadir .. "/include"
+  for _, d in ipairs{ out, prefix .. "/bin", prefix .. "/etc", hdr, luadir .. "/lib", luadir .. "/bin" } do fs.mkdirp(d) end
   local okh, herr = require("vapor.luaheaders").write(hdr)
   if not okh then return nil, "cannot write Lua headers: " .. tostring(herr) end
   local function cleanup() fs.rmtree(work) end
   -- Makefiles often ask pkg-config for Lua: answer with vlr's headers (no library: modules take their symbols from the runtime)
+  for _, lib in ipairs{ "lua", "lua5.4", "lua5.1", "lua54", "lua51" } do run(("ar rcs %s >/dev/null 2>&1"):format(M.shq(luadir .. "/lib/lib" .. lib .. ".a"))) end
   local pcdir = work .. "/pkgconfig"
   fs.mkdirp(pcdir)
   for name, ver in pairs{ lua = "5.4.8", ["lua5.4"] = "5.4.8", ["lua-5.4"] = "5.4.8", lua54 = "5.4.8", ["lua5.1"] = "5.1.5", ["lua-5.1"] = "5.1.5", lua51 = "5.1.5" } do
@@ -187,7 +190,7 @@ local function build_script(profile, plan, root, destdir, opts)
   local libflag = (profile.platform == "macos" or profile.platform == "macosx") and "-bundle -undefined dynamic_lookup" or "-shared"
   local v = {
     PREFIX = prefix, BINDIR = prefix .. "/bin", CONFDIR = prefix .. "/etc", LIBDIR = out, LUADIR = out,
-    LUA_INCDIR = hdr, LUA_LIBDIR = hdr .. "/lib", LUA_BINDIR = prefix .. "/bin", LUA = opts.lua or "lua", LUALIB = "", LUA_VERSION = "5.4",
+    LUA_DIR = luadir, LUA_INCDIR = hdr, LUA_LIBDIR = luadir .. "/lib", LUA_BINDIR = luadir .. "/bin", LUA = opts.lua or "lua", LUALIB = "", LUA_VERSION = "5.4",
     LIB_EXTENSION = "so", OBJ_EXTENSION = "o", CC = profile.cc, LD = profile.cc,
     CFLAGS = "-O2 -fPIC -I" .. hdr, LIBFLAG = libflag,
   }

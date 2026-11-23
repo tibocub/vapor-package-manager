@@ -35,7 +35,7 @@ Besides `builtin` C rocks, vpm builds rocks whose rockspec says `build.type = "m
 or `{ cmake = { variables, platforms } }`, plus `external` as before. Only the variable tables may differ per platform; anything else platform-specific, or `build_dependencies`, means no plan (the reason is recorded).
 vpm validates every name, path and value (`native.validate`) and shell-quotes them; it assembles the commands itself, as luarocks does (`make -f Makefile TARGET VAR=value...`, then the install target; `cmake -S . -B build -D...`, `--build`, `--target install`).
 
-**Variables** (`$(NAME)` in the rockspec): `PREFIX`, `BINDIR`, `CONFDIR` are scratch folders; `LIBDIR` and `LUADIR` are the flat folder whose contents become the package's files; `LUA_INCDIR` holds vlr's headers (`LUA_LIBDIR` is empty: modules take their symbols from the runtime);
+**Variables** (`$(NAME)` in the rockspec): `PREFIX`, `BINDIR`, `CONFDIR` are scratch folders; `LIBDIR` and `LUADIR` are the flat folder whose contents become the package's files; `LUA_DIR` is a stand-in Lua installation: `include/` has vlr's headers (`LUA_INCDIR`), `lib/` empty stub `liblua*.a` files (`LUA_LIBDIR`: modules take their symbols from the runtime), `bin/` (`LUA_BINDIR`);
 `CFLAGS` (`-O2 -fPIC -I<headers>`), `LIBFLAG` (`-shared`, or `-bundle -undefined dynamic_lookup` on macOS), `CC`, `LD`, `LIB_EXTENSION`, `OBJ_EXTENSION`, `LUA`, `LUA_VERSION`, and `NAME_INCDIR`/`NAME_LIBDIR` for external dependencies.
 A rock that installs under `PREFIX/lib/lua/5.x` or `share/lua/5.x` is relocated from there; a build that installs nothing vpm can place fails (nothing is registered).
 

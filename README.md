@@ -2,13 +2,13 @@
 
 vpm installs libraries and programs, with their dependencies, from [luarocks.org](https://luarocks.org). It runs on [vlr](https://github.com/tibocub/vapor-lua-runtime)
 (the Vapor Lua Runtime) on Linux, macOS, Windows, and on small boards such as the RP2040 (about 190 KB of RAM). vlr + vpm is meant to be to Lua what
-Python + pip or Node + npm are to theirs. vpm is written in Lua and is the first real vlr application.
+Node + npm are to JavaScript. vpm is written in Lua and is the first real vlr application.
 
 **Status: working on Linux, in daily use against the real index; young.** See [docs/status.md](docs/status.md) for what is verified and what is not.
 
 ## Quickstart
 
-You need vlr (see its README) and a C compiler only for rocks with C code.
+You need [vlr](https://github.com/tibocub/vapor-lua-runtime) and a C compiler only for rocks with C code.
 
 ```sh
 git clone https://github.com/tibocub/vapor-package-manager vpm

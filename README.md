@@ -70,4 +70,4 @@ docs/             documentation: start at docs/README.md
 
 ## License
 
-No license chosen yet; all rights reserved by the author until one is added.
+MIT
